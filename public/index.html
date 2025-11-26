@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Sentra Stat Monitor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="/assets/sentra_amblem.png" type="image/x-icon">
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+  />
+  <style>
+    html,
+    body {
+      height: 100%;
+    }
+    body {
+      background: #1e1d2e;
+      color: #ffffff;
+    }
+    .navbar-grafana {
+      background: #0c0f14;
+      border-bottom: 1px solid #374151;
+    }
+    .card-grafana {
+      background: #111827;
+      border: 1px solid #374151;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+    }
+    .card-header-grafana {
+      background: #0f172a;
+      border-bottom: 1px solid #374151;
+    }
+    .metrics-card {
+      background: #111827;
+      border: 1px solid #374151;
+    }
+    .metrics-card .title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #ffffff;
+    }
+    .metrics-card .value {
+      font-size: 24px;
+      font-weight: 700;
+      color: #ffffff;
+    }
+    .metrics-card .sub {
+      font-size: 12px;
+      color: #ffffff;
+    }
+    .services-wrapper {
+      max-height: 360px;
+      overflow: hidden;
+    }
+    .services-table-container {
+      max-height: 260px;
+      overflow-y: auto;
+      background: #111827;
+    }
+    .table thead {
+      position: sticky;
+      top: 0;
+      background: #111827;
+      color: #ffffff;
+      z-index: 2;
+    }
+    .table tbody tr:hover {
+      background: #111827;
+      cursor: pointer;
+    }
+    .status-active,
+    .status-inactive,
+    .status-failed {
+      color: #ffffff;
+      font-weight: 600;
+    }
+    .logs-pane {
+      background: #111827;
+      border: 1px solid #374151;
+      border-radius: 8px;
+      padding: 10px;
+      height: 200px;
+      overflow-y: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+        "Liberation Mono", "Courier New", monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+    }
+    #service-status,
+    #service-logs {
+      background: #000000;
+      color: #ffffff;
+      font-family: Consolas, "Courier New", monospace;
+    }
+    .text-secondary,
+    .text-muted,
+    .small {
+      color: #ffffff !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="d-flex flex-column min-vh-100">
+    <nav class="navbar navbar-grafana navbar-expand-lg text-light">
+      <div class="container-fluid px-3">
+        <div class="d-flex align-items-center gap-2">
+          <img
+            src="/assets/whitesentra_logo2.png"
+            alt="Sentra logo"
+            style="height: 156px"
+          />
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <button
+            id="user-settings-btn"
+            class="btn btn-sm btn-outline-light"
+            type="button"
+          >
+            User settings
+          </button>
+          <button
+            id="logout-btn"
+            class="btn btn-sm btn-outline-danger"
+            type="button"
+          >
+            Logout
+          </button>
+        </div>
+      </div>
+    </nav>
+
+    <main class="flex-fill">
+      <div class="container-fluid px-3 py-2 h-100 d-flex flex-column">
+        <!-- Metrics row -->
+        <div class="row g-2 mb-2">
+          <div class="col-12 d-flex justify-content-between small text-secondary">
+            <span>Control plane insights · auto refresh</span>
+            <span id="metrics-updated">Metrics: pending...</span>
+          </div>
+          <div class="col-12">
+            <div class="row g-2">
+              <div class="col-12 col-sm-6 col-lg-3">
+                <div class="metrics-card rounded-3 p-2">
+                  <div class="title">CPU Utilization</div>
+                  <div class="value" id="cpu-value">-</div>
+                  <div class="sub" id="cpu-sub">Instant</div>
+                  <div class="progress mt-2" style="height: 6px">
+                    <div
+                      id="cpu-bar"
+                      class="progress-bar bg-success"
+                      role="progressbar"
+                      style="width: 0%"
+                    ></div>
+                  </div>
+                </div>
+              </div>
+              <div class="col-12 col-sm-6 col-lg-3">
+                <div class="metrics-card rounded-3 p-2">
+                  <div class="title">Memory Usage</div>
+                  <div class="value" id="mem-value">-</div>
+                  <div class="sub" id="mem-sub">Total - Used</div>
+                  <div class="progress mt-2" style="height: 6px">
+                    <div
+                      id="mem-bar"
+                      class="progress-bar bg-danger"
+                      role="progressbar"
+                      style="width: 0%"
+                    ></div>
+                  </div>
+                </div>
+              </div>
+              <div class="col-12 col-sm-6 col-lg-3">
+                <div class="metrics-card rounded-3 p-2">
+                  <div class="title">Swap Usage</div>
+                  <div class="value" id="swap-value">-</div>
+                  <div class="sub" id="swap-sub">Total - Used</div>
+                  <div class="progress mt-2" style="height: 6px">
+                    <div
+                      id="swap-bar"
+                      class="progress-bar bg-info"
+                      role="progressbar"
+                      style="width: 0%"
+                    ></div>
+                  </div>
+                </div>
+              </div>
+              <div class="col-12 col-sm-6 col-lg-3">
+                <div class="metrics-card rounded-3 p-2">
+                  <div class="title">Disk I/O</div>
+                  <div class="value" id="disk-value">-</div>
+                  <div class="sub" id="disk-sub">Device - R/W</div>
+                  <div class="progress mt-2" style="height: 6px">
+                    <div
+                      id="disk-bar"
+                      class="progress-bar bg-warning"
+                      role="progressbar"
+                      style="width: 0%"
+                    ></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Main grid -->
+        <div class="row g-2 flex-fill">
+          <!-- Left: services -->
+          <div class="col-lg-6 d-flex">
+            <div class="card card-grafana w-100 d-flex flex-column">
+              <div
+                class="card-header card-header-grafana d-flex justify-content-between align-items-center"
+              >
+                <div>
+                  <div class="small text-secondary text-uppercase">
+                    Services
+                  </div>
+                  <div class="small text-secondary" id="services-count-label">
+                    0 units
+                  </div>
+                </div>
+                <div class="d-flex flex-wrap gap-1">
+                  <input
+                    id="search"
+                    type="text"
+                    class="form-control form-control-sm"
+                    placeholder="Filter"
+                    style="width: 130px"
+                  />
+                  <select
+                    id="status-filter"
+                    class="form-select form-select-sm"
+                    style="width: 110px"
+                  >
+                    <option value="">All</option>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="failed">Failed</option>
+                  </select>
+                  <button
+                    id="refresh-btn"
+                    class="btn btn-sm btn-outline-light"
+                    type="button"
+                  >
+                    Refresh
+                  </button>
+                </div>
+              </div>
+              <div class="card-body d-flex flex-column gap-2">
+                <div
+                  class="d-flex justify-content-between align-items-center small text-secondary"
+                >
+                  <span id="info">Loading...</span>
+                  <span id="last-updated">Last update: -</span>
+                </div>
+ <div class="services-wrapper d-flex flex-column">
+                  <div class="services-table-container flex-grow-1">
+                    <table
+                      class="table table-sm table-hover align-middle mb-0 text-secondary"
+                    >
+                      <thead>
+                        <tr>
+                          <th>Unit</th>
+                          <th>Load</th>
+                          <th>Active</th>
+                          <th>Sub</th>
+                          <th>Description</th>
+                        </tr>
+                      </thead>
+                      <tbody id="services-body">
+                        <tr>
+                          <td colspan="5">Loading service list...</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div
+                    class="d-flex justify-content-between align-items-center mt-2 small"
+                  >
+                    <span id="pagination-info" class="text-secondary"
+                      >Page 1 of 1</span
+                    >
+                    <div class="btn-group btn-group-sm" role="group">
+                      <button
+                        id="page-prev"
+                        class="btn btn-outline-secondary"
+                      >
+                        Prev
+                      </button>
+                      <button
+                        id="page-next"
+                        class="btn btn-outline-secondary"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                
+                <div class="rounded border border-secondary-subtle p-2">
+                  <div class="small text-secondary text-uppercase">
+                    Failure trend
+                  </div>
+                  <div class="small text-secondary">
+                    Failed & inactive units
+                  </div>
+                  <div
+                    class="mt-1 small text-warning"
+                    id="failed-summary"
+                  >
+                    No failed units
+                  </div>
+                  <div class="mt-2 services-table-container">
+                    <table
+                      class="table table-sm table-borderless text-secondary mb-0"
+                    >
+                      <thead class="table-dark">
+                        <tr>
+                          <th>Unit</th>
+                          <th>Status</th>
+                          <th>Failed/Changed at</th>
+                          <th>Age</th>
+                        </tr>
+                      </thead>
+                      <tbody id="failed-body">
+                        <tr>
+                          <td colspan="4">No failed services detected.</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+               
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: details -->
+          <div class="col-lg-6 d-flex">
+            <div class="card card-grafana w-100 d-flex flex-column">
+              <div
+                class="card-header card-header-grafana d-flex justify-content-between align-items-center"
+              >
+                <div>
+                  <div class="fw-semibold small" id="detail-name">
+                    No unit selected
+                  </div>
+                  <div class="small text-secondary" id="detail-meta">
+                    Select a service to inspect its status and logs.
+                  </div>
+                </div>
+                <div class="d-flex gap-2 align-items-center small">
+                  <span class="badge text-bg-secondary">Detail view</span>
+                  <span class="badge text-bg-dark" id="detail-active">-</span>
+                  <span class="badge text-bg-dark" id="detail-sub">-</span>
+                </div>
+              </div>
+              <div class="card-body d-flex flex-column gap-2">
+                <div class="d-flex align-items-center gap-2 small">
+                  <button
+                    id="restart-btn"
+                    class="btn btn-sm btn-danger"
+                    type="button"
+                    disabled
+                  >
+                    Restart service
+                  </button>
+                  <span id="action-status" class="text-secondary">
+                    Select a unit to enable actions.
+                  </span>
+                </div>
+                <div class="flex-grow-1 d-flex flex-column gap-2">
+                  <div class="flex-grow-1 d-flex flex-column">
+                    <div class="small text-secondary mb-1">
+                      Status output (systemctl)
+                    </div>
+                    <div id="service-status" class="logs-pane">
+No data available.</div>
+                  </div>
+                  <div class="flex-grow-1 d-flex flex-column">
+                    <div class="small text-secondary mb-1">
+                      Recent logs (journalctl, last 200 lines)
+                    </div>
+                    <div id="service-logs" class="logs-pane">
+No data available.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    let ALL_SERVICES = [];
+    let FAILED_SERVICES = [];
+    let AUTO_REFRESH_TIMER = null;
+    let REFRESH_INTERVAL_MS = 5000;
+    let METRICS_TIMER = null;
+    let METRICS_INTERVAL_MS = 5000;
+    let CURRENT_SERVICE = null;
+    const PAGE_SIZE = 10;
+    let CURRENT_PAGE = 1;
+
+    function setDetailHeaderFromService(service) {
+      const nameEl = document.getElementById("detail-name");
+      const metaEl = document.getElementById("detail-meta");
+      const activeChip = document.getElementById("detail-active");
+      const subChip = document.getElementById("detail-sub");
+
+      if (!service) {
+        CURRENT_SERVICE = null;
+        nameEl.textContent = "No unit selected";
+        metaEl.textContent =
+          "Select a service to inspect its status and logs.";
+        activeChip.textContent = "-";
+        subChip.textContent = "-";
+        activeChip.className = "badge text-bg-dark";
+        subChip.className = "badge text-bg-dark";
+        return;
+      }
+
+      CURRENT_SERVICE = service;
+
+      const name = service.name || "Unknown unit";
+      const description = service.description || "";
+      const load = service.load || "n/a";
+      const active = service.active || "unknown";
+      const sub = service.sub || "-";
+
+      nameEl.textContent = name;
+      metaEl.textContent = description
+        ? description + " | load: " + load
+        : "load: " + load;
+
+      const activeLower = String(active).toLowerCase();
+
+      activeChip.textContent = active;
+      activeChip.className = "badge text-bg-dark";
+      if (activeLower === "active") {
+        activeChip.classList.add("text-bg-success");
+      } else if (activeLower === "failed") {
+        activeChip.classList.add("text-bg-danger");
+      } else {
+        activeChip.classList.add("text-bg-secondary");
+      }
+
+      subChip.textContent = sub;
+      subChip.className = "badge text-bg-dark";
+      const subLower = String(sub).toLowerCase();
+      if (subLower.includes("running")) {
+        subChip.classList.add("text-bg-success");
+      } else if (subLower.includes("failed")) {
+        subChip.classList.add("text-bg-danger");
+      } else {
+        subChip.classList.add("text-bg-secondary");
+      }
+
+      const restartBtn = document.getElementById("restart-btn");
+      const actionStatus = document.getElementById("action-status");
+      restartBtn.disabled = false;
+      actionStatus.textContent = "Ready to issue actions for " + name + ".";
+    }
+
+    async function fetchServices() {
+      const info = document.getElementById("info");
+      const tbody = document.getElementById("services-body");
+      const lastUpdated = document.getElementById("last-updated");
+      const countLabel = document.getElementById("services-count-label");
+
+      info.textContent = "Fetching service list...";
+
+      try {
+        const res = await fetch("/api/services");
+        const data = await res.json();
+        if (!data.success) {
+          tbody.innerHTML =
+            "<tr><td colspan='5' class='px-3 py-3 text-secondary'>Error: " +
+            (data.error || "Unknown error") +
+            "</td></tr>";
+          info.textContent = "Service list could not be loaded.";
+          return;
+        }
+
+        ALL_SERVICES = data.services || [];
+        CURRENT_PAGE = 1;
+        renderTable();
+        info.textContent = "Loaded " + ALL_SERVICES.length + " services.";
+        lastUpdated.textContent =
+          "Last update: " + new Date().toLocaleTimeString();
+        countLabel.textContent = ALL_SERVICES.length + " units";
+
+        await fetchFailedServices();
+      } catch (err) {
+        console.error(err);
+        tbody.innerHTML =
+          "<tr><td colspan='5' class='px-3 py-3 text-secondary'>API request failed.</td></tr>";
+        info.textContent = "API request failed.";
+      }
+    }
+
+    async function fetchFailedServices() {
+      const summaryEl = document.getElementById("failed-summary");
+      const tbody = document.getElementById("failed-body");
+
+      summaryEl.textContent = "Loading failed units...";
+
+      try {
+        const res = await fetch("/api/failed-services");
+        const data = await res.json();
+        if (!data.success) {
+          summaryEl.textContent = "Failed to load failed units.";
+          tbody.innerHTML =
+            "<tr><td colspan='4' class='px-2 py-2 text-secondary'>Error loading failed services.</td></tr>";
+          return;
+        }
+
+        FAILED_SERVICES = data.failedServices || [];
+        renderFailedServicesGraph();
+      } catch (err) {
+        console.error(err);
+        summaryEl.textContent = "Failed to load failed units.";
+        tbody.innerHTML =
+          "<tr><td colspan='4' class='px-2 py-2 text-secondary'>API request failed.</td></tr>";
+      }
+    }
+
+    async function fetchMetrics() {
+      const updatedEl = document.getElementById("metrics-updated");
+      updatedEl.textContent = "Metrics: loading...";
+      try {
+        const res = await fetch("/api/metrics");
+        const data = await res.json();
+        if (!data.success) {
+          updatedEl.textContent = "Metrics unavailable";
+          return;
+        }
+        renderMetrics(data.metrics || {});
+        updatedEl.textContent =
+          "Metrics updated: " + new Date().toLocaleTimeString();
+      } catch (err) {
+        console.error(err);
+        updatedEl.textContent = "Metrics fetch failed";
+      }
+    }
+
+    function renderMetrics(metrics) {
+      const cpu = metrics.cpu;
+      const mem = metrics.memory;
+      const swap = metrics.swap;
+      const disk = metrics.disk;
+
+      const cpuVal =
+        cpu && typeof cpu.usage === "number" ? cpu.usage.toFixed(1) + "%" : "-";
+      document.getElementById("cpu-value").textContent = cpuVal;
+      document.getElementById("cpu-bar").style.width =
+        cpu && typeof cpu.usage === "number" ? cpu.usage + "%" : "0%";
+
+      const memVal =
+        mem && mem.total ? (mem.usedPct || 0).toFixed(1) + "%" : "-";
+      document.getElementById("mem-value").textContent = memVal;
+      document.getElementById("mem-sub").textContent =
+        mem && mem.total
+          ? `${formatBytes(mem.used)} / ${formatBytes(mem.total)}`
+          : "Memory unavailable";
+      document.getElementById("mem-bar").style.width =
+        mem && mem.total ? mem.usedPct + "%" : "0%";
+
+      const swapVal =
+        swap && swap.total ? (swap.usedPct || 0).toFixed(1) + "%" : "-";
+      document.getElementById("swap-value").textContent = swapVal;
+      document.getElementById("swap-sub").textContent =
+        swap && swap.total
+          ? `${formatBytes(swap.used)} / ${formatBytes(swap.total)}`
+          : "Swap unavailable";
+      document.getElementById("swap-bar").style.width =
+        swap && swap.total ? swap.usedPct + "%" : "0%";
+
+      const diskLabel =
+        disk && disk.device
+          ? `${disk.device} - R ${formatRate(disk.readKBps)} / W ${formatRate(
+              disk.writeKBps
+            )}`
+          : "Disk I/O unavailable";
+      document.getElementById("disk-value").textContent =
+        disk && disk.device
+          ? `${formatRate(disk.readKBps, true)} / ${formatRate(
+              disk.writeKBps,
+              true
+            )}`
+          : "-";
+      document.getElementById("disk-sub").textContent = diskLabel;
+
+      const diskUtil =
+        disk && disk.readKBps !== undefined && disk.writeKBps !== undefined
+          ? Math.min(100, ((disk.readKBps + disk.writeKBps) / 1024) * 10)
+          : 0;
+      document.getElementById("disk-bar").style.width = diskUtil + "%";
+    }
+
+    function formatBytes(bytes) {
+      if (!bytes && bytes !== 0) return "-";
+      const units = ["B", "KB", "MB", "GB", "TB"];
+      let v = bytes;
+      let idx = 0;
+      while (v >= 1024 && idx < units.length - 1) {
+        v /= 1024;
+        idx++;
+      }
+      return v.toFixed(v >= 10 ? 0 : 1) + " " + units[idx];
+    }
+
+    function formatRate(kbps, compact) {
+      if (kbps === null || kbps === undefined || Number.isNaN(kbps)) {
+        return "-";
+      }
+      const units = ["KB/s", "MB/s", "GB/s"];
+      let v = kbps;
+      let i = 0;
+      while (v >= 1024 && i < units.length - 1) {
+        v /= 1024;
+        i++;
+      }
+      return compact
+        ? v.toFixed(1) + units[i].replace("/s", "")
+        : v.toFixed(1) + " " + units[i];
+    }
+
+    function paginateServices(filtered) {
+      const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+      if (CURRENT_PAGE > totalPages) CURRENT_PAGE = totalPages;
+      const start = (CURRENT_PAGE - 1) * PAGE_SIZE;
+      const pageItems = filtered.slice(start, start + PAGE_SIZE);
+      return { pageItems, totalPages };
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById("services-body");
+      const searchVal =
+        document.getElementById("search").value.toLowerCase() || "";
+      const statusFilter = document.getElementById("status-filter").value;
+      const pageInfo = document.getElementById("pagination-info");
+      const prevBtn = document.getElementById("page-prev");
+      const nextBtn = document.getElementById("page-next");
+
+      const filtered = ALL_SERVICES.filter((s) => {
+        const name = (s.name || "").toLowerCase();
+        const desc = (s.description || "").toLowerCase();
+
+        const matchText =
+          !searchVal || name.includes(searchVal) || desc.includes(searchVal);
+
+        const matchStatus = statusFilter
+          ? (s.active || "").toLowerCase() === statusFilter
+          : true;
+
+        return matchText && matchStatus;
+      });
+
+      if (filtered.length === 0) {
+        tbody.innerHTML =
+          "<tr><td colspan='5' class='px-3 py-3 text-secondary'>No services match the current filter.</td></tr>";
+        pageInfo.textContent = "Page 0 of 0";
+        prevBtn.disabled = true;
+        nextBtn.disabled = true;
+        return;
+      }
+
+      const { pageItems, totalPages } = paginateServices(filtered);
+      pageInfo.textContent = "Page " + CURRENT_PAGE + " of " + totalPages;
+      prevBtn.disabled = CURRENT_PAGE <= 1;
+      nextBtn.disabled = CURRENT_PAGE >= totalPages;
+
+      tbody.innerHTML = "";
+      for (const s of pageItems) {
+        const tr = document.createElement("tr");
+
+        const activeLower = String(s.active || "").toLowerCase();
+        let statusClass = "text-secondary";
+        if (activeLower === "active") statusClass = "status-active";
+        else if (activeLower === "inactive") statusClass = "status-inactive";
+        else if (activeLower === "failed") statusClass = "status-failed";
+
+        tr.innerHTML = `
+          <td class="px-3 py-2">${s.name}</td>
+          <td class="px-3 py-2">${s.load}</td>
+          <td class="px-3 py-2 ${statusClass}">${s.active}</td>
+          <td class="px-3 py-2">${s.sub}</td>
+          <td class="px-3 py-2">${s.description}</td>
+        `;
+
+        tr.addEventListener("click", () => handleServiceClick(s));
+        tbody.appendChild(tr);
+      }
+    }
+
+    function renderFailedServicesGraph() {
+      const tbody = document.getElementById("failed-body");
+      const summaryEl = document.getElementById("failed-summary");
+
+      const inactiveFromList = ALL_SERVICES.filter(
+        (s) => String(s.active || "").toLowerCase() === "inactive"
+      ).map((s) => ({
+        name: s.name,
+        description: s.description,
+        active: s.active,
+        sub: s.sub,
+        load: s.load,
+        failedAt: null,
+        statusLabel: "inactive",
+      }));
+
+      const itemsFailed = FAILED_SERVICES.map((s) => ({
+        ...s,
+        statusLabel: "failed",
+      }));
+
+      const items = [...itemsFailed, ...inactiveFromList];
+
+      if (!items.length) {
+        summaryEl.textContent = "No failed units";
+        tbody.innerHTML =
+          "<tr><td colspan='4' class='px-2 py-2 text-secondary'>No failed services detected.</td></tr>";
+        return;
+      }
+
+      summaryEl.textContent = items.length + " units (failed/inactive)";
+
+      tbody.innerHTML = "";
+
+      for (const s of items) {
+        const stateLabel = s.statusLabel || String(s.active || "failed");
+        const failedAt = s.failedAt || "N/A";
+
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td class="px-2 py-1">${s.name}</td>
+          <td class="px-2 py-1">${stateLabel}</td>
+          <td class="px-2 py-1">${failedAt}</td>
+          <td class="px-2 py-1">-</td>
+        `;
+
+        tr.addEventListener("click", () => {
+          const svc =
+            ALL_SERVICES.find((x) => x.name === s.name) || {
+              name: s.name,
+              description: s.description,
+              active: s.active,
+              sub: s.sub,
+              load: s.load,
+            };
+          handleServiceClick(svc);
+        });
+
+        tbody.appendChild(tr);
+      }
+    }
+
+    async function handleServiceClick(service) {
+      setDetailHeaderFromService(service);
+      await loadServiceDetail(service.name);
+    }
+
+    async function loadServiceDetail(name) {
+      const statusEl = document.getElementById("service-status");
+      const logsEl = document.getElementById("service-logs");
+
+      statusEl.textContent = "Fetching status for " + name + "...";
+      logsEl.textContent = "Fetching logs for " + name + "...";
+
+      try {
+        const res = await fetch("/api/services/" + encodeURIComponent(name));
+        const data = await res.json();
+        if (!data.success) {
+          const msg = data.error || "Details could not be retrieved.";
+          statusEl.textContent = "Error: " + msg;
+          logsEl.textContent = "Error: " + msg;
+          return;
+        }
+
+        statusEl.textContent = data.statusText
+          ? data.statusText.trim()
+          : "No status output.";
+
+        logsEl.textContent = data.logsText
+          ? data.logsText.trim()
+          : "No recent logs.";
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = "API request for status failed.";
+        logsEl.textContent = "API request for logs failed.";
+      }
+    }
+
+    async function handleRestart() {
+      if (!CURRENT_SERVICE || !CURRENT_SERVICE.name) {
+        return;
+      }
+
+      const name = CURRENT_SERVICE.name;
+      const restartBtn = document.getElementById("restart-btn");
+      const actionStatus = document.getElementById("action-status");
+
+      if (
+        !window.confirm(
+          "Restart service " + name + "? This will call systemctl restart."
+        )
+      ) {
+        return;
+      }
+
+      restartBtn.disabled = true;
+      actionStatus.textContent = "Restarting " + name + "...";
+
+      try {
+        const res = await fetch(
+          "/api/services/" + encodeURIComponent(name) + "/restart",
+          {
+            method: "POST",
+          }
+        );
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          const msg = data && data.error ? data.error : "Unknown error";
+          actionStatus.textContent = "Restart failed: " + msg;
+        } else {
+          actionStatus.textContent = "Restarted " + name + " successfully.";
+          await fetchServices();
+          await loadServiceDetail(name);
+        }
+      } catch (err) {
+        console.error(err);
+        actionStatus.textContent = "API request for restart failed.";
+      } finally {
+        restartBtn.disabled = !CURRENT_SERVICE;
+      }
+    }
+
+    function startAutoRefresh() {
+      stopAutoRefresh();
+      AUTO_REFRESH_TIMER = setInterval(fetchServices, REFRESH_INTERVAL_MS);
+    }
+
+    function stopAutoRefresh() {
+      if (AUTO_REFRESH_TIMER) {
+        clearInterval(AUTO_REFRESH_TIMER);
+        AUTO_REFRESH_TIMER = null;
+      }
+    }
+
+    function startMetricsRefresh() {
+      if (METRICS_TIMER) clearInterval(METRICS_TIMER);
+      METRICS_TIMER = setInterval(fetchMetrics, METRICS_INTERVAL_MS);
+    }
+
+    document
+      .getElementById("search")
+      .addEventListener("input", () => {
+        CURRENT_PAGE = 1;
+        renderTable();
+      });
+    document
+      .getElementById("status-filter")
+      .addEventListener("change", () => {
+        CURRENT_PAGE = 1;
+        renderTable();
+      });
+    document
+      .getElementById("refresh-btn")
+      .addEventListener("click", fetchServices);
+
+    document.getElementById("page-prev").addEventListener("click", () => {
+      if (CURRENT_PAGE > 1) {
+        CURRENT_PAGE -= 1;
+        renderTable();
+      }
+    });
+    document.getElementById("page-next").addEventListener("click", () => {
+      CURRENT_PAGE += 1;
+      renderTable();
+    });
+
+    document
+      .getElementById("restart-btn")
+      .addEventListener("click", handleRestart);
+
+    fetchServices();
+    startAutoRefresh();
+    fetchMetrics();
+    startMetricsRefresh();
+  </script>
+  <script>
+    (function () {
+      const logoutBtn = document.getElementById("logout-btn");
+      const userSettingsBtn = document.getElementById("user-settings-btn");
+
+      if (logoutBtn) {
+        logoutBtn.addEventListener("click", async () => {
+          try {
+            await fetch("/logout", { method: "POST" });
+          } catch (e) {
+            console.error(e);
+          }
+          window.location.href = "/login";
+        });
+      }
+
+      if (userSettingsBtn) {
+        userSettingsBtn.addEventListener("click", () => {
+          window.location.href = "/user-settings";
+        });
+      }
+    })();
+  </script>
+</body>
+</html>
