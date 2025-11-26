@@ -1,3 +1,4 @@
+![Logo](public/assets/whitesentra_logo2.png)
 # Sentra Stat Monitor
 
 Linux üzerindeki systemd servislerini, durumlarını ve loglarını takip etmek için hazırlanmış küçük bir dashboard.
@@ -12,6 +13,7 @@ Linux üzerindeki systemd servislerini, durumlarını ve loglarını takip etmek
 
 > Not: Proje demo amaçlıdır. Gerçek bir üretim ortamına almadan önce güvenlik ayarlarını gözden geçirmeniz gerekir.
 
+![Logo](public/assets/SentraStatBanner.png)
 ## Gereksinimler
 
 - Node.js 18+ (senin ortamında 22 çalışıyor)
