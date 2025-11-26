@@ -13,6 +13,7 @@
     html,
     body {
       height: 100%;
+      overflow: hidden;
     }
     body {
       background: #020617;
@@ -21,40 +22,87 @@
     .navbar-grafana {
       background: #0c0f14;
       border-bottom: 1px solid #374151;
+      flex-shrink: 0;
     }
-    .card-grafana {
-      background: #020617;
-      border: none;
-      box-shadow: none;
-    }
-    .console-output {
+    .terminal-container {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
       background: #000000;
       color: #00ff9c;
-      font-family: Consolas, "Courier New", monospace;
-      font-size: 12px;
-      border-radius: 4px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 13px;
+      line-height: 1.5;
       border: 1px solid #374151;
-      padding: 10px;
-      height: 420px;
-      overflow-y: auto;
-      white-space: pre-wrap;
+      margin: 12px;
+      border-radius: 4px;
+      overflow: hidden;
     }
-    .console-history {
-      background: #020617;
-      color: #e5e7eb;
-      font-family: Consolas, "Courier New", monospace;
+    .terminal-header {
+      background: #0c0f14;
+      padding: 8px 12px;
+      border-bottom: 1px solid #374151;
       font-size: 11px;
-      border-radius: 4px;
-      border: 1px solid #374151;
-      padding: 8px;
-      height: 420px;
-      overflow-y: auto;
-      white-space: pre-wrap;
+      color: #9ca3af;
+      flex-shrink: 0;
     }
-    .text-secondary,
-    .text-muted,
-    .small {
-      color: #ffffff !important;
+    .terminal-output {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      outline: none;
+    }
+    .terminal-output::-webkit-scrollbar {
+      width: 8px;
+    }
+    .terminal-output::-webkit-scrollbar-track {
+      background: #000000;
+    }
+    .terminal-output::-webkit-scrollbar-thumb {
+      background: #374151;
+      border-radius: 4px;
+    }
+    .terminal-output::-webkit-scrollbar-thumb:hover {
+      background: #4b5563;
+    }
+    .terminal-input-line {
+      display: flex;
+      gap: 4px;
+    }
+    .terminal-prompt {
+      color: #00ff9c;
+      flex-shrink: 0;
+    }
+    .terminal-input-field {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: #00ff9c;
+      outline: none;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 13px;
+      padding: 0;
+      margin: 0;
+    }
+    .terminal-input-field::placeholder {
+      color: #6b7280;
+    }
+    .error-line {
+      color: #ff6b6b;
+    }
+    .success-line {
+      color: #4ade80;
+    }
+    .output-line {
+      color: #e5e7eb;
+    }
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
     }
   </style>
 </head>
@@ -88,52 +136,12 @@
       </div>
     </nav>
 
-    <main class="flex-fill">
-      <div class="container py-3 h-100 d-flex flex-column">
-        <div class="row justify-content-center flex-fill">
-          <div class="col-lg-10 d-flex">
-            <div class="card card-grafana w-100 d-flex flex-column">
-              <div class="card-header">
-                <h1 class="h6 mb-0">Node console (restricted)</h1>
-              </div>
-              <div class="card-body d-flex flex-column gap-2">
-                <div class="small text-secondary">
-                  Enter Linux commands to run on the server. <strong>sudo</strong> and dangerous commands are blocked.
-                </div>
-                <form id="console-form" class="d-flex gap-2">
-                  <input
-                    type="text"
-                    id="command-input"
-                    class="form-control form-control-sm"
-                    placeholder="e.g.: uname -a"
-                    autocomplete="off"
-                    required
-                  />
-                  <button
-                    type="submit"
-                    id="run-btn"
-                    class="btn btn-sm btn-danger"
-                  >
-                    Run
-                  </button>
-                </form>
-                <div
-                  id="console-error"
-                  class="small text-danger"
-                  style="display:none"
-                ></div>
-                <div class="row g-2">
-                  <div class="col-lg-9">
-                    <div id="console-output" class="console-output"></div>
-                  </div>
-                  <div class="col-lg-3 mt-2 mt-lg-0">
-                    <div id="console-history" class="console-history"></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+    <main>
+      <div class="terminal-container">
+        <div class="terminal-header">
+          user@sentra-monitor:~# (restricted environment - dangerous commands are blocked)
         </div>
+        <div id="terminal-output" class="terminal-output"></div>
       </div>
     </main>
   </div>
@@ -141,35 +149,201 @@
   <script>
     const logoutBtn = document.getElementById("logout-btn");
     const goDashboardBtn = document.getElementById("go-dashboard-btn");
-    const form = document.getElementById("console-form");
-    const cmdInput = document.getElementById("command-input");
-    const runBtn = document.getElementById("run-btn");
-    const errorEl = document.getElementById("console-error");
-    const outputEl = document.getElementById("console-output");
-    const historyEl = document.getElementById("console-history");
+    const outputEl = document.getElementById("terminal-output");
 
-    const CONSOLE_BANNER =
-      "Welcome to Sentra console (restricted).\n" +
-      "All commands are executed with limited privileges.\n";
+    const WELCOME_MESSAGE =
+      "Welcome to Sentra Console\n" +
+      "Type 'help' for available commands, 'clear' to clear the screen\n" +
+      "\n";
 
     let commandHistory = [];
+    let historyIndex = -1;
+    let currentInput = "";
 
-    function renderHistory() {
-      if (!historyEl) return;
-      if (!commandHistory.length) {
-        historyEl.textContent = "History (this session):\n\nNo commands yet.";
-        return;
-      }
-      const lines = ["History (this session):", ""];
-      commandHistory.forEach((cmd, idx) => {
-        lines.push((idx + 1) + ": " + cmd);
-      });
-      historyEl.textContent = lines.join("\n");
+    // Initialize terminal
+    function initTerminal() {
+      outputEl.innerHTML = "";
+      appendOutput(WELCOME_MESSAGE);
+      createInputLine();
     }
 
-    // initial console text & history
-    outputEl.textContent = CONSOLE_BANNER;
-    renderHistory();
+    function appendOutput(text) {
+      const lines = text.split("\n");
+      lines.forEach((line) => {
+        if (line) {
+          const span = document.createElement("div");
+          span.className = "output-line";
+          span.textContent = line;
+          outputEl.appendChild(span);
+        } else {
+          outputEl.appendChild(document.createElement("div"));
+        }
+      });
+      outputEl.scrollTop = outputEl.scrollHeight;
+    }
+
+    function appendErrorOutput(text) {
+      const lines = text.split("\n");
+      lines.forEach((line) => {
+        if (line) {
+          const span = document.createElement("div");
+          span.className = "error-line";
+          span.textContent = line;
+          outputEl.appendChild(span);
+        }
+      });
+      outputEl.scrollTop = outputEl.scrollHeight;
+    }
+
+    function createInputLine() {
+      const inputLine = document.createElement("div");
+      inputLine.className = "terminal-input-line";
+      inputLine.id = "current-input-line";
+
+      const prompt = document.createElement("span");
+      prompt.className = "terminal-prompt";
+      prompt.textContent = "$ ";
+
+      const input = document.createElement("input");
+      input.type = "text";
+      input.id = "terminal-input";
+      input.className = "terminal-input-field";
+      input.placeholder = "";
+      input.autocomplete = "off";
+      input.spellcheck = "false";
+
+      inputLine.appendChild(prompt);
+      inputLine.appendChild(input);
+      outputEl.appendChild(inputLine);
+
+      input.focus();
+      outputEl.scrollTop = outputEl.scrollHeight;
+
+      input.addEventListener("keydown", handleKeyDown);
+    }
+
+    function handleKeyDown(e) {
+      const input = e.target;
+
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const command = input.value.trim();
+        executeCommand(command);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        if (historyIndex < commandHistory.length - 1) {
+          historyIndex++;
+          currentInput = input.value;
+          input.value = commandHistory[commandHistory.length - 1 - historyIndex];
+        }
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        if (historyIndex > 0) {
+          historyIndex--;
+          input.value = commandHistory[commandHistory.length - 1 - historyIndex];
+        } else if (historyIndex === 0) {
+          historyIndex = -1;
+          input.value = currentInput;
+        }
+      } else if (e.key === "Tab") {
+        e.preventDefault();
+      }
+    }
+
+    async function executeCommand(command) {
+      const inputLine = document.getElementById("current-input-line");
+      const input = document.getElementById("terminal-input");
+
+      // Display the command
+      if (command) {
+        const cmdLine = document.createElement("div");
+        cmdLine.className = "terminal-input-line";
+        const cmdPrompt = document.createElement("span");
+        cmdPrompt.className = "terminal-prompt";
+        cmdPrompt.textContent = "$ ";
+        const cmdText = document.createElement("span");
+        cmdText.style.color = "#00ff9c";
+        cmdText.textContent = command;
+        cmdLine.appendChild(cmdPrompt);
+        cmdLine.appendChild(cmdText);
+
+        outputEl.replaceChild(cmdLine, inputLine);
+      }
+
+      // Handle local commands
+      if (command.toLowerCase() === "clear") {
+        outputEl.innerHTML = "";
+        appendOutput("");
+        historyIndex = -1;
+        currentInput = "";
+        createInputLine();
+        return;
+      }
+
+      if (command.toLowerCase() === "help") {
+        appendOutput(
+          "Available commands:\n" +
+          "  help          - Show this help message\n" +
+          "  clear         - Clear the terminal\n" +
+          "  whoami        - Show current user\n" +
+          "  pwd           - Show current directory\n" +
+          "  ls            - List files (with flags supported)\n" +
+          "  cat           - Display file contents\n" +
+          "  echo          - Print text\n" +
+          "  date          - Show current date/time\n" +
+          "  uname         - Show system information\n" +
+          "\nNote: Some commands are blocked for security reasons.\n"
+        );
+        createInputLine();
+        return;
+      }
+
+      if (!command) {
+        createInputLine();
+        return;
+      }
+
+      // Add to history
+      commandHistory.push(command);
+      historyIndex = -1;
+      currentInput = "";
+
+      try {
+        const res = await fetch("/api/console/exec", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ command }),
+        });
+
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok || !data.success) {
+          const msg = data && data.error ? data.error : "Command failed.";
+          appendErrorOutput(msg);
+          createInputLine();
+          return;
+        }
+
+        const stdout = data.stdout || "";
+        const stderr = data.stderr || "";
+
+        if (stdout) {
+          appendOutput(stdout);
+        }
+        if (stderr) {
+          appendErrorOutput(stderr);
+        }
+        if (!stdout && !stderr) {
+          appendOutput("");
+        }
+
+        createInputLine();
+      } catch (err) {
+        console.error(err);
+        appendErrorOutput("Network error: " + err.message);
+        createInputLine();
+      }
+    }
 
     if (logoutBtn) {
       logoutBtn.addEventListener("click", async () => {
@@ -188,74 +362,14 @@
       });
     }
 
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const command = cmdInput.value.trim();
-      errorEl.style.display = "none";
-
-      if (!command) {
-        return;
-      }
-
-      // handle local clear command
-      if (command.toLowerCase() === "clear") {
-        commandHistory.push(command);
-        renderHistory();
-        outputEl.textContent = CONSOLE_BANNER;
-        outputEl.scrollTop = outputEl.scrollHeight;
-        cmdInput.value = "";
-        cmdInput.focus();
-        return;
-      }
-
-      commandHistory.push(command);
-      renderHistory();
-
-      runBtn.disabled = true;
-      runBtn.textContent = "Running...";
-
-      try {
-        const res = await fetch("/api/console/exec", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ command }),
-        });
-        const data = await res.json().catch(() => ({}));
-
-        if (!res.ok || !data.success) {
-          const msg = data && data.error ? data.error : "Command failed.";
-          errorEl.textContent = msg;
-          errorEl.style.display = "block";
-          return;
-        }
-
-        const stdout = data.stdout || "";
-        const stderr = data.stderr || "";
-        let text = "";
-        text += "$ " + data.command + "\n\n";
-        if (stdout) {
-          text += stdout + "\n";
-        }
-        if (stderr) {
-          text += "\n[stderr]\n" + stderr + "\n";
-        }
-        if (!stdout && !stderr) {
-          text += "(no output)\n";
-        }
-
-        outputEl.textContent += "\n" + text;
-        outputEl.scrollTop = outputEl.scrollHeight;
-      } catch (err) {
-        console.error(err);
-        errorEl.textContent = "Network error. Please try again.";
-        errorEl.style.display = "block";
-      } finally {
-        runBtn.disabled = false;
-        runBtn.textContent = "Run";
-        cmdInput.value = "";
-        cmdInput.focus();
-      }
+    // Click anywhere in terminal to focus input
+    outputEl.addEventListener("click", () => {
+      const input = document.getElementById("terminal-input");
+      if (input) input.focus();
     });
+
+    // Initialize on load
+    initTerminal();
   </script>
 </body>
 </html>
