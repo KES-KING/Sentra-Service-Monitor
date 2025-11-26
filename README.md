@@ -117,6 +117,24 @@ Sunucu varsayılan olarak şu adreste çalışır:
   - Yeni şifre minimum 8 karakter, `bcrypt` ile hash’lenip DB’de güncellenir.
   - Navbar’da `Back to dashboard` ve `Logout` bulunur.
 
+## PM2 ile Çalıştırma
+
+Uygulamayı PM2 ile servis gibi çalıştırmak istersen:
+
+```bash
+cd /path/to/linux-service-dashboard
+pm2 start server.js --name sentra-stat-monitor
+```
+
+Yararlı komutlar:
+
+```bash
+pm2 logs sentra-stat-monitor        # logları izle
+pm2 restart sentra-stat-monitor     # süreci yeniden başlat
+pm2 stop sentra-stat-monitor        # süreci durdur
+pm2 save                            # reboot sonrası otomatik başlatma için süreç listesini kaydet
+```
+
 ## API Özet
 
 Bütün API endpoint’leri oturum gerektirir (`requireAuth`):
@@ -156,4 +174,3 @@ Bütün API endpoint’leri oturum gerektirir (`requireAuth`):
 
 - Frontend tarafı sadece statik HTML + Bootstrap + vanilla JS kullanır, derleme adımı yoktur.
 - Değişiklik yaptıktan sonra sadece `server.js`’i yeniden başlatman yeterlidir.
-
