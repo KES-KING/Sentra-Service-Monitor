@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Sentra Stat Monitor - Console</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="/assets/sentra_amblem.png" type="image/x-icon">
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+  />
+  <style>
+    html,
+    body {
+      height: 100%;
+    }
+    body {
+      background: #020617;
+      color: #ffffff;
+    }
+    .navbar-grafana {
+      background: #0c0f14;
+      border-bottom: 1px solid #374151;
+    }
+    .card-grafana {
+      background: #020617;
+      border: none;
+      box-shadow: none;
+    }
+    .console-output {
+      background: #000000;
+      color: #00ff9c;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 12px;
+      border-radius: 4px;
+      border: 1px solid #374151;
+      padding: 10px;
+      height: 420px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+    .console-history {
+      background: #020617;
+      color: #e5e7eb;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 11px;
+      border-radius: 4px;
+      border: 1px solid #374151;
+      padding: 8px;
+      height: 420px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+    .text-secondary,
+    .text-muted,
+    .small {
+      color: #ffffff !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="d-flex flex-column min-vh-100">
+    <nav class="navbar navbar-grafana navbar-expand-lg text-light">
+      <div class="container-fluid px-3">
+        <div class="d-flex align-items-center gap-2">
+          <img
+            src="/assets/whitesentra_logo2.png"
+            alt="Sentra logo"
+            style="height: 156px"
+          />
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <button
+            id="go-dashboard-btn"
+            class="btn btn-sm btn-outline-light"
+            type="button"
+          >
+            Back to dashboard
+          </button>
+          <button
+            id="logout-btn"
+            class="btn btn-sm btn-outline-danger"
+            type="button"
+          >
+            Logout
+          </button>
+        </div>
+      </div>
+    </nav>
+
+    <main class="flex-fill">
+      <div class="container py-3 h-100 d-flex flex-column">
+        <div class="row justify-content-center flex-fill">
+          <div class="col-lg-10 d-flex">
+            <div class="card card-grafana w-100 d-flex flex-column">
+              <div class="card-header">
+                <h1 class="h6 mb-0">Node console (restricted)</h1>
+              </div>
+              <div class="card-body d-flex flex-column gap-2">
+                <div class="small text-secondary">
+                  Enter Linux commands to run on the server. <strong>sudo</strong> and dangerous commands are blocked.
+                </div>
+                <form id="console-form" class="d-flex gap-2">
+                  <input
+                    type="text"
+                    id="command-input"
+                    class="form-control form-control-sm"
+                    placeholder="e.g.: uname -a"
+                    autocomplete="off"
+                    required
+                  />
+                  <button
+                    type="submit"
+                    id="run-btn"
+                    class="btn btn-sm btn-danger"
+                  >
+                    Run
+                  </button>
+                </form>
+                <div
+                  id="console-error"
+                  class="small text-danger"
+                  style="display:none"
+                ></div>
+                <div class="row g-2">
+                  <div class="col-lg-9">
+                    <div id="console-output" class="console-output"></div>
+                  </div>
+                  <div class="col-lg-3 mt-2 mt-lg-0">
+                    <div id="console-history" class="console-history"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const logoutBtn = document.getElementById("logout-btn");
+    const goDashboardBtn = document.getElementById("go-dashboard-btn");
+    const form = document.getElementById("console-form");
+    const cmdInput = document.getElementById("command-input");
+    const runBtn = document.getElementById("run-btn");
+    const errorEl = document.getElementById("console-error");
+    const outputEl = document.getElementById("console-output");
+    const historyEl = document.getElementById("console-history");
+
+    const CONSOLE_BANNER =
+      "Welcome to Sentra console (restricted).\n" +
+      "All commands are executed with limited privileges.\n";
+
+    let commandHistory = [];
+
+    function renderHistory() {
+      if (!historyEl) return;
+      if (!commandHistory.length) {
+        historyEl.textContent = "History (this session):\n\nNo commands yet.";
+        return;
+      }
+      const lines = ["History (this session):", ""];
+      commandHistory.forEach((cmd, idx) => {
+        lines.push((idx + 1) + ": " + cmd);
+      });
+      historyEl.textContent = lines.join("\n");
+    }
+
+    // initial console text & history
+    outputEl.textContent = CONSOLE_BANNER;
+    renderHistory();
+
+    if (logoutBtn) {
+      logoutBtn.addEventListener("click", async () => {
+        try {
+          await fetch("/logout", { method: "POST" });
+        } catch (e) {
+          console.error(e);
+        }
+        window.location.href = "/login";
+      });
+    }
+
+    if (goDashboardBtn) {
+      goDashboardBtn.addEventListener("click", () => {
+        window.location.href = "/";
+      });
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const command = cmdInput.value.trim();
+      errorEl.style.display = "none";
+
+      if (!command) {
+        return;
+      }
+
+      // handle local clear command
+      if (command.toLowerCase() === "clear") {
+        commandHistory.push(command);
+        renderHistory();
+        outputEl.textContent = CONSOLE_BANNER;
+        outputEl.scrollTop = outputEl.scrollHeight;
+        cmdInput.value = "";
+        cmdInput.focus();
+        return;
+      }
+
+      commandHistory.push(command);
+      renderHistory();
+
+      runBtn.disabled = true;
+      runBtn.textContent = "Running...";
+
+      try {
+        const res = await fetch("/api/console/exec", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ command }),
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok || !data.success) {
+          const msg = data && data.error ? data.error : "Command failed.";
+          errorEl.textContent = msg;
+          errorEl.style.display = "block";
+          return;
+        }
+
+        const stdout = data.stdout || "";
+        const stderr = data.stderr || "";
+        let text = "";
+        text += "$ " + data.command + "\n\n";
+        if (stdout) {
+          text += stdout + "\n";
+        }
+        if (stderr) {
+          text += "\n[stderr]\n" + stderr + "\n";
+        }
+        if (!stdout && !stderr) {
+          text += "(no output)\n";
+        }
+
+        outputEl.textContent += "\n" + text;
+        outputEl.scrollTop = outputEl.scrollHeight;
+      } catch (err) {
+        console.error(err);
+        errorEl.textContent = "Network error. Please try again.";
+        errorEl.style.display = "block";
+      } finally {
+        runBtn.disabled = false;
+        runBtn.textContent = "Run";
+        cmdInput.value = "";
+        cmdInput.focus();
+      }
+    });
+  </script>
+</body>
+</html>

@@ -114,6 +114,13 @@
         </div>
         <div class="d-flex align-items-center gap-2">
           <button
+            id="console-btn"
+            class="btn btn-sm btn-outline-light"
+            type="button"
+          >
+            Console
+          </button>
+          <button
             id="user-settings-btn"
             class="btn btn-sm btn-outline-light"
             type="button"
@@ -898,6 +905,7 @@ No data available.</div>
     (function () {
       const logoutBtn = document.getElementById("logout-btn");
       const userSettingsBtn = document.getElementById("user-settings-btn");
+      const consoleBtn = document.getElementById("console-btn");
 
       if (logoutBtn) {
         logoutBtn.addEventListener("click", async () => {
@@ -913,6 +921,12 @@ No data available.</div>
       if (userSettingsBtn) {
         userSettingsBtn.addEventListener("click", () => {
           window.location.href = "/user-settings";
+        });
+      }
+
+      if (consoleBtn) {
+        consoleBtn.addEventListener("click", () => {
+          window.location.href = "/console";
         });
       }
     })();

@@ -270,6 +270,14 @@ app.get("/user-settings", (req, res) => {
   res.sendFile(require("path").join(__dirname, "public", "user-settings.html"));
 });
 
+// Console page
+app.get("/console", (req, res) => {
+  if (!req.session || !req.session.userId) {
+    return res.redirect("/login");
+  }
+  res.sendFile(require("path").join(__dirname, "public", "console.html"));
+});
+
 // static assets (logo, etc.)
 app.use(
   "/assets",
@@ -498,6 +506,124 @@ app.post("/api/user/change-password", requireAuth, async (req, res) => {
     res.status(500).json({
       success: false,
       error: "Could not change password",
+      details: String(err),
+    });
+  }
+});
+
+// Limited console command execution
+app.post("/api/console/exec", requireAuth, (req, res) => {
+  try {
+    const { command } = req.body || {};
+
+    if (typeof command !== "string") {
+      return res
+        .status(400)
+        .json({ success: false, error: "Command must be a string" });
+    }
+
+    const trimmed = command.trim();
+    if (!trimmed) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Command must not be empty" });
+    }
+
+    if (trimmed.length > 200) {
+      return res.status(400).json({
+        success: false,
+        error: "Command is too long (max 200 characters)",
+      });
+    }
+
+    const lowered = trimmed.toLowerCase();
+
+    // Block sudo explicitly
+    if (/\bsudo\b/.test(lowered)) {
+      return res
+        .status(400)
+        .json({ success: false, error: "sudo is not allowed" });
+    }
+
+    // Block some obviously dangerous commands (defence in depth)
+    const forbiddenWords = [
+      "rm ",
+      " rm",
+      "mkfs",
+      "shutdown",
+      "reboot",
+      "poweroff",
+      "halt",
+      "dd ",
+      " :(){:|:;&};:",
+      "systemctl",
+      "service ",
+      "kill ",
+      "killall",
+      "pkill",
+      "mount",
+      "umount",
+      "docker",
+      "kubectl",
+      "passwd",
+      "useradd",
+      "userdel",
+      "chown ",
+      "chmod ",
+      "cp ",
+      "mv ",
+    ];
+    if (forbiddenWords.some((w) => lowered.includes(w))) {
+      return res.status(400).json({
+        success: false,
+        error: "This command is not allowed for safety reasons",
+      });
+    }
+
+    // Disallow shell metacharacters to avoid chaining/injection
+    if (/[;&|`$<>]/.test(trimmed)) {
+      return res.status(400).json({
+        success: false,
+        error: "Command contains forbidden characters",
+      });
+    }
+
+    // Basic allowed charset: letters, digits, space, dot, slash, dash, underscore, equals
+    if (!/^[a-zA-Z0-9_./=\-\s]+$/.test(trimmed)) {
+      return res.status(400).json({
+        success: false,
+        error: "Command contains unsupported characters",
+      });
+    }
+
+    exec(
+      trimmed,
+      {
+        timeout: 5000,
+        maxBuffer: 1024 * 128,
+      },
+      (error, stdout, stderr) => {
+        if (error && !stdout && !stderr) {
+          return res.status(500).json({
+            success: false,
+            error: "Command failed or timed out",
+            details: String(error),
+          });
+        }
+
+        res.json({
+          success: true,
+          command: trimmed,
+          stdout: stdout ? stdout.toString().slice(0, 8000) : "",
+          stderr: stderr ? stderr.toString().slice(0, 8000) : "",
+        });
+      }
+    );
+  } catch (err) {
+    console.error("Console exec error:", err);
+    res.status(500).json({
+      success: false,
+      error: "Could not execute command",
       details: String(err),
     });
   }

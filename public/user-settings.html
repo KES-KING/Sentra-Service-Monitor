@@ -47,6 +47,13 @@
         </div>
         <div class="d-flex align-items-center gap-2">
           <button
+            id="console-btn"
+            class="btn btn-sm btn-outline-light"
+            type="button"
+          >
+            Console
+          </button>
+          <button
             id="go-dashboard-btn"
             class="btn btn-sm btn-outline-light"
             type="button"
@@ -130,6 +137,7 @@
 
   <script>
     const logoutBtn = document.getElementById("logout-btn");
+    const consoleBtn = document.getElementById("console-btn");
     const goDashboardBtn = document.getElementById("go-dashboard-btn");
     const form = document.getElementById("password-form");
     const msgEl = document.getElementById("password-message");
@@ -149,6 +157,12 @@
     if (goDashboardBtn) {
       goDashboardBtn.addEventListener("click", () => {
         window.location.href = "/";
+      });
+    }
+
+    if (consoleBtn) {
+      consoleBtn.addEventListener("click", () => {
+        window.location.href = "/console";
       });
     }
 
