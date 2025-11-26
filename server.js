@@ -148,24 +148,47 @@ function getMemoryInfo() {
 }
 
 function pickPrimaryDisk(lines) {
-  // choose first non-loop/ram/sr device
+  // Filter out loop, ram, and sr devices, but accept physical and virtual disks
+  // Support: sda, sdb, vda, vdb, xvda, xvdb, nvme0n1, etc.
+  const validDevices = [];
+  
   for (const line of lines) {
     const parts = line.trim().split(/\s+/);
     if (parts.length < 14) continue;
     const name = parts[2];
+    
+    // Skip irrelevant device types
     if (
       name.startsWith("loop") ||
       name.startsWith("ram") ||
-      name.startsWith("sr")
+      name.startsWith("sr") ||
+      name.startsWith("dm-") ||
+      name.startsWith("zram")
     ) {
       continue;
     }
+    
+    // Skip partitions (ends with numbers like sda1, vda1, nvme0n1p1)
+    if (/\d+$/.test(name)) {
+      continue;
+    }
+    
     const readSectors = parseInt(parts[5], 10);
     const writeSectors = parseInt(parts[9], 10);
     if (Number.isNaN(readSectors) || Number.isNaN(writeSectors)) continue;
-    return { name, readSectors, writeSectors };
+    
+    validDevices.push({ name, readSectors, writeSectors });
   }
-  return null;
+  
+  // Prioritize main disks: prefer sda, vda, xvda, nvme over others
+  const priorities = ['sda', 'vda', 'xvda', 'nvme0n1'];
+  for (const priority of priorities) {
+    const disk = validDevices.find(d => d.name === priority);
+    if (disk) return disk;
+  }
+  
+  // Return first valid disk if no priority match
+  return validDevices.length > 0 ? validDevices[0] : null;
 }
 
 function readDiskStats() {
@@ -177,10 +200,34 @@ function readDiskStats() {
 
 async function getDiskIO() {
   const first = readDiskStats();
-  if (!first) return null;
+  if (!first) {
+    // If /proc/diskstats not available, return neutral value instead of null
+    return {
+      device: "N/A",
+      readKBps: 0,
+      writeKBps: 0,
+    };
+  }
+  
   await sleep(200);
   const second = readDiskStats();
-  if (!second || second.name !== first.name) return null;
+  
+  if (!second) {
+    return {
+      device: first.name,
+      readKBps: 0,
+      writeKBps: 0,
+    };
+  }
+  
+  // If device name changed, try again with first device
+  if (second.name !== first.name) {
+    return {
+      device: second.name,
+      readKBps: 0,
+      writeKBps: 0,
+    };
+  }
 
   const sectorSize = 512; // bytes
   const deltaRead = Math.max(0, second.readSectors - first.readSectors);
@@ -188,10 +235,11 @@ async function getDiskIO() {
   const intervalSec = 0.2;
   const readKBps = (deltaRead * sectorSize) / 1024 / intervalSec;
   const writeKBps = (deltaWrite * sectorSize) / 1024 / intervalSec;
+  
   return {
     device: second.name,
-    readKBps,
-    writeKBps,
+    readKBps: Math.max(0, readKBps),
+    writeKBps: Math.max(0, writeKBps),
   };
 }
 
