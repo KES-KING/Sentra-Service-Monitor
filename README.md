@@ -1,3 +1,4 @@
+![Logo](public/assets/whitesentra_logo2.png)
 # Sentra Stat Monitor
 
 Linux üzerindeki systemd servislerini, durumlarını ve loglarını takip etmek için hazırlanmış küçük bir dashboard.
