@@ -8,7 +8,10 @@ yarn-error.log*
 .env
 .testenv
 .testenv*
- 
+
+# Windows Form Build outputs
+WinApp/
+
 # Database files
 schema-test.sql
 
