@@ -8,7 +8,9 @@ yarn-error.log*
 .env
 .testenv
 .testenv*
-.schema.sql
+ 
+# Database files
+schema-test.sql
 
 # Logs
 logs/

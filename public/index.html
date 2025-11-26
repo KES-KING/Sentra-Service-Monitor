@@ -15,12 +15,12 @@
       height: 100%;
     }
     body {
-      background: #1e1d2e;
-      color: #ffffff;
+      background: #151824;
+      color: #e5e7eb;
     }
     .navbar-grafana {
-      background: #0c0f14;
-      border-bottom: 1px solid #374151;
+      background: #0f131d;
+      border-bottom: 1px solid #2d3748;
     }
     .server-info {
       font-size: 12px;
@@ -30,7 +30,7 @@
       margin-right: auto;
       margin-left: 20px;
       padding-left: 20px;
-      border-left: 1px solid #374151;
+      border-left: 1px solid #2d3748;
     }
     .server-info-item {
       display: flex;
@@ -38,35 +38,35 @@
       gap: 5px;
     }
     .server-info-item strong {
-      color: #e5e7eb;
+      color: #d1d5db;
     }
     .card-grafana {
-      background: #111827;
-      border: 1px solid #374151;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+      background: #1a202d;
+      border: 1px solid #2d3748;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
     }
     .card-header-grafana {
-      background: #0f172a;
-      border-bottom: 1px solid #374151;
+      background: #16202f;
+      border-bottom: 1px solid #2d3748;
     }
     .metrics-card {
-      background: #111827;
-      border: 1px solid #374151;
+      background: #1a202d;
+      border: 1px solid #2d3748;
     }
     .metrics-card .title {
       font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.08em;
-      color: #ffffff;
+      color: #d1d5db;
     }
     .metrics-card .value {
       font-size: 24px;
       font-weight: 700;
-      color: #ffffff;
+      color: #f3f4f6;
     }
     .metrics-card .sub {
       font-size: 12px;
-      color: #ffffff;
+      color: #9ca3af;
     }
     .services-wrapper {
       max-height: 360px;
@@ -75,28 +75,66 @@
     .services-table-container {
       max-height: 260px;
       overflow-y: auto;
-      background: #111827;
+      background: #1a202d;
+    }
+    .services-table-container .table {
+      color: #d1d5db;
+      margin-bottom: 0;
+    }
+    .services-table-container .table th {
+      background: #16202f;
+      color: #9ca3af;
+      font-weight: 600;
+      border-color: #2d3748;
+    }
+    .services-table-container .table td {
+      border-color: #2d3748;
+      color: #d1d5db;
     }
     .table thead {
       position: sticky;
       top: 0;
-      background: #111827;
-      color: #ffffff;
+      background: #16202f;
+      color: #9ca3af;
       z-index: 2;
+      border-color: #2d3748;
+    }
+    .table thead th {
+      background: #16202f;
+      color: #9ca3af;
+      font-weight: 600;
+      border-color: #2d3748;
+    }
+    .table tbody tr {
+      background: #1a202d;
+      border-color: #2d3748;
     }
     .table tbody tr:hover {
-      background: #111827;
+      background: #22293d;
       cursor: pointer;
+    }
+    .table tbody td {
+      color: #d1d5db;
+      border-color: #2d3748;
+      vertical-align: middle;
     }
     .status-active,
     .status-inactive,
     .status-failed {
-      color: #ffffff;
       font-weight: 600;
     }
+    .status-active {
+      color: #4ade80;
+    }
+    .status-inactive {
+      color: #9ca3af;
+    }
+    .status-failed {
+      color: #ff6b6b;
+    }
     .logs-pane {
-      background: #111827;
-      border: 1px solid #374151;
+      background: #0f131d;
+      border: 1px solid #2d3748;
       border-radius: 8px;
       padding: 10px;
       height: 200px;
@@ -105,17 +143,19 @@
         "Liberation Mono", "Courier New", monospace;
       font-size: 12px;
       white-space: pre-wrap;
+      color: #d1d5db;
     }
     #service-status,
     #service-logs {
-      background: #000000;
-      color: #ffffff;
+      background: #0f131d;
+      color: #d1d5db;
       font-family: Consolas, "Courier New", monospace;
+      border: 1px solid #2d3748;
     }
     .text-secondary,
     .text-muted,
     .small {
-      color: #ffffff !important;
+      color: #9ca3af !important;
     }
   </style>
 </head>
@@ -254,7 +294,7 @@
               >
                 <div>
                   <div class="small text-secondary text-uppercase">
-                    Services
+                    Services <span id="services-platform-label"></span>
                   </div>
                   <div class="small text-secondary" id="services-count-label">
                     0 units
@@ -456,6 +496,10 @@ No data available.</div>
           document.getElementById("server-ip").textContent = data.ipAddress || "-";
           document.getElementById("server-hostname").textContent = data.hostname || "-";
           document.getElementById("server-os").textContent = data.osVersion || "-";
+          
+          // Set platform label for services
+          const platformLabel = data.isWindows ? "(Windows)" : "(Linux)";
+          document.getElementById("services-platform-label").textContent = platformLabel;
         }
       } catch (err) {
         console.error("Error loading server info:", err);

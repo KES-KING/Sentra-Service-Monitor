@@ -16,14 +16,41 @@
       height: 100%;
     }
     body {
-      background: radial-gradient(circle at top, #111827 0, #020617 55%);
-      color: #e5e7eb;
+      background: radial-gradient(circle at top, #1a202d 0, #0f131d 55%);
+      color: #d1d5db;
     }
     .login-card {
-      background: #020b1f;
-      border: 1px solid #1f2937;
-      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
+      background: #16202f;
+      border: 1px solid #2d3748;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
       border-radius: 12px;
+    }
+    .login-card .form-label {
+      color: #9ca3af;
+    }
+    .login-card .form-control {
+      background: #0f131d;
+      border: 1px solid #2d3748;
+      color: #e5e7eb;
+    }
+    .login-card .form-control:focus {
+      background: #0f131d;
+      border-color: #4b5563;
+      color: #e5e7eb;
+      box-shadow: 0 0 0 0.2rem rgba(75, 85, 99, 0.25);
+    }
+    .login-card .btn-danger {
+      background: #dc2626;
+      border-color: #dc2626;
+    }
+    .login-card .btn-danger:hover {
+      background: #b91c1c;
+      border-color: #b91c1c;
+    }
+    .login-card .alert {
+      background: #7f1d1d;
+      border: 1px solid #dc2626;
+      color: #fecaca;
     }
   </style>
 </head>

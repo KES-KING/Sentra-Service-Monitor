@@ -7,7 +7,7 @@ const session = require("express-session");
 const bcrypt = require("bcryptjs");
 const mysql = require("mysql2/promise");
 const { exec } = require("child_process");
-const { listServices } = require("./services");
+const { listServices, getServiceStatus, restartService, getFailedServices, IS_WINDOWS } = require("./services");
 
 const app = express();
 const PORT = process.env.PORT || 4001;
@@ -243,6 +243,123 @@ async function getDiskIO() {
   };
 }
 
+// Windows-specific metrics functions
+function getWindowsCpuUsage() {
+  return new Promise((resolve) => {
+    const cmd = `powershell -Command "Get-WmiObject Win32_PerfFormattedData_PerfOS_Processor -Filter 'Name=\"_Total\"' | Select-Object -ExpandProperty PercentProcessorTime"`;
+    
+    exec(cmd, { maxBuffer: 1024 * 1024, shell: "powershell.exe" }, (error, stdout) => {
+      if (error || !stdout) {
+        resolve({ usage: 0 });
+        return;
+      }
+      
+      try {
+        const usage = Math.max(0, Math.min(100, parseInt(stdout.trim(), 10)));
+        resolve({ usage });
+      } catch (e) {
+        resolve({ usage: 0 });
+      }
+    });
+  });
+}
+
+function getWindowsMemoryInfo() {
+  return new Promise((resolve) => {
+    const cmd = `powershell -Command "Get-WmiObject Win32_OperatingSystem | Select-Object TotalVisibleMemorySize, FreePhysicalMemory | ConvertTo-Json"`;
+    
+    exec(cmd, { maxBuffer: 1024 * 1024, shell: "powershell.exe" }, (error, stdout) => {
+      if (error || !stdout) {
+        resolve(null);
+        return;
+      }
+      
+      try {
+        const data = JSON.parse(stdout);
+        const total = (data.TotalVisibleMemorySize || 0) * 1024; // Convert KB to bytes
+        const free = (data.FreePhysicalMemory || 0) * 1024; // Convert KB to bytes
+        const used = total - free;
+        const usedPct = total ? (used / total) * 100 : 0;
+        
+        // Windows doesn't have traditional swap, but uses virtual memory
+        resolve({
+          memory: {
+            total,
+            used,
+            free,
+            usedPct: Math.max(0, Math.min(100, usedPct)),
+          },
+          swap: {
+            total: 0,
+            used: 0,
+            free: 0,
+            usedPct: 0,
+          },
+        });
+      } catch (e) {
+        resolve(null);
+      }
+    });
+  });
+}
+
+function getWindowsDiskIO() {
+  return new Promise((resolve) => {
+    const cmd = `powershell -Command "Get-WmiObject Win32_PerfFormattedData_PerfDisk_LogicalDisk -Filter 'Name=\"C:\"' | Select-Object DiskReadBytesPerSec, DiskWriteBytesPerSec | ConvertTo-Json"`;
+    
+    exec(cmd, { maxBuffer: 1024 * 1024, shell: "powershell.exe" }, (error, stdout) => {
+      if (error || !stdout) {
+        resolve({
+          device: "C:",
+          readKBps: 0,
+          writeKBps: 0,
+        });
+        return;
+      }
+      
+      try {
+        const data = JSON.parse(stdout);
+        const readBytes = parseInt(data.DiskReadBytesPerSec || "0", 10);
+        const writeBytes = parseInt(data.DiskWriteBytesPerSec || "0", 10);
+        
+        resolve({
+          device: "C:",
+          readKBps: readBytes / 1024,
+          writeKBps: writeBytes / 1024,
+        });
+      } catch (e) {
+        resolve({
+          device: "C:",
+          readKBps: 0,
+          writeKBps: 0,
+        });
+      }
+    });
+  });
+}
+
+// OS-agnostic metrics wrapper functions
+async function getSystemMetrics() {
+  const os = require("os");
+  const isWindows = os.platform() === "win32";
+  
+  let cpu, memSwap, disk;
+  
+  if (isWindows) {
+    // Get Windows metrics
+    cpu = await getWindowsCpuUsage();
+    memSwap = await getWindowsMemoryInfo();
+    disk = await getWindowsDiskIO();
+  } else {
+    // Get Linux metrics
+    cpu = await getCpuUsage();
+    memSwap = getMemoryInfo();
+    disk = await getDiskIO();
+  }
+  
+  return { cpu, memSwap, disk };
+}
+
 // Routes ----------------------------------------------------------
 // Login / logout and page routing
 app.get("/login", (req, res) => {
@@ -393,6 +510,7 @@ app.get("/api/server-info", requireAuth, (req, res) => {
       ipAddress,
       osName,
       osVersion: osDetail,
+      isWindows: IS_WINDOWS,
     });
   } catch (err) {
     console.error("Error getting server info:", err);
@@ -420,97 +538,51 @@ app.get("/api/services", requireAuth, async (req, res) => {
 });
 
 // Single service: status + logs
-app.get("/api/services/:name", requireAuth, (req, res) => {
+app.get("/api/services/:name", requireAuth, async (req, res) => {
   const name = req.params.name;
 
-  // Basic validation to avoid injection
-  if (!/^[a-zA-Z0-9_.@\-]+\.service$/.test(name)) {
-    return res
-      .status(400)
-      .json({ success: false, error: "Invalid service name" });
-  }
-
-  const statusCmd = `systemctl status ${name} --no-pager`;
-  const logsCmd = `journalctl -u ${name} --no-pager -n 200 --output=short-iso`;
-
-  exec(statusCmd, { maxBuffer: 1024 * 1024 }, (statusError, statusStdout) => {
-    if (statusError && !statusStdout) {
-      return res
-        .status(500)
-        .json({ success: false, error: "Could not read service status" });
+  try {
+    // Validation differs based on OS
+    if (IS_WINDOWS) {
+      // Windows: allow alphanumeric, spaces, underscores, hyphens
+      if (!/^[a-zA-Z0-9_\-\s]+$/.test(name)) {
+        return res
+          .status(400)
+          .json({ success: false, error: "Invalid service name" });
+      }
+    } else {
+      // Linux: require .service extension
+      if (!/^[a-zA-Z0-9_.@\-]+\.service$/.test(name)) {
+        return res
+          .status(400)
+          .json({ success: false, error: "Invalid service name" });
+      }
     }
 
-    exec(logsCmd, { maxBuffer: 1024 * 1024 }, (logsError, logsStdout) => {
-      let logsText;
-      if (logsError && !logsStdout) {
-        logsText = "Could not fetch logs: " + String(logsError);
-      } else {
-        logsText = logsStdout.toString();
-      }
+    const { statusText, logsText } = await getServiceStatus(name);
 
-      res.json({
-        success: true,
-        name,
-        statusText: statusStdout.toString(),
-        logsText,
-      });
+    res.json({
+      success: true,
+      name,
+      statusText,
+      logsText,
     });
-  });
+  } catch (err) {
+    console.error("Error getting service status:", err);
+    res.status(500).json({
+      success: false,
+      error: "Could not read service status",
+      details: String(err),
+    });
+  }
 });
 
 // Failed services with last state change timestamps
 app.get("/api/failed-services", requireAuth, async (req, res) => {
   try {
-    const services = await listServices();
-    const failed = services.filter(
-      (s) => String(s.active || "").toLowerCase() === "failed"
-    );
+    const failedServices = await getFailedServices();
 
-    const promises = failed.map(
-      (svc) =>
-        new Promise((resolve) => {
-          const showCmd = `systemctl show ${svc.name} -p StateChangeTimestamp -p ActiveEnterTimestamp -p InactiveEnterTimestamp`;
-          exec(
-            showCmd,
-            { maxBuffer: 1024 * 1024 },
-            (error, stdout /*, stderr */) => {
-              let failedAt = null;
-              if (!error && stdout) {
-                const lines = stdout
-                  .toString()
-                  .split("\n")
-                  .map((l) => l.trim())
-                  .filter(Boolean);
-
-                const readField = (key) => {
-                  const line = lines.find((ln) => ln.startsWith(key + "="));
-                  if (!line) return null;
-                  const value = line.slice(key.length + 1).trim();
-                  if (!value || value === "n/a") return null;
-                  return value;
-                };
-
-                failedAt =
-                  readField("StateChangeTimestamp") ||
-                  readField("InactiveEnterTimestamp") ||
-                  readField("ActiveEnterTimestamp");
-              }
-
-              resolve({
-                name: svc.name,
-                description: svc.description,
-                active: svc.active,
-                sub: svc.sub,
-                load: svc.load,
-                failedAt,
-              });
-            }
-          );
-        })
-    );
-
-    const failedWithTimes = await Promise.all(promises);
-    res.json({ success: true, failedServices: failedWithTimes });
+    res.json({ success: true, failedServices });
   } catch (err) {
     console.error("Error while listing failed services:", err);
     res.status(500).json({
@@ -522,41 +594,48 @@ app.get("/api/failed-services", requireAuth, async (req, res) => {
 });
 
 // Restart a service
-app.post("/api/services/:name/restart", requireAuth, (req, res) => {
+app.post("/api/services/:name/restart", requireAuth, async (req, res) => {
   const name = req.params.name;
 
-  if (!/^[a-zA-Z0-9_.@\-]+\.service$/.test(name)) {
-    return res
-      .status(400)
-      .json({ success: false, error: "Invalid service name" });
-  }
-
-  const restartCmd = `systemctl restart ${name}`;
-
-  exec(restartCmd, { maxBuffer: 1024 * 1024 }, (error /*, stdout, stderr */) => {
-    if (error) {
-      console.error("Service could not be restarted:", error);
-      return res
-        .status(500)
-        .json({ success: false, error: "Service could not be restarted" });
+  try {
+    // Validation differs based on OS
+    if (IS_WINDOWS) {
+      // Windows: allow alphanumeric, spaces, underscores, hyphens
+      if (!/^[a-zA-Z0-9_\-\s]+$/.test(name)) {
+        return res
+          .status(400)
+          .json({ success: false, error: "Invalid service name" });
+      }
+    } else {
+      // Linux: require .service extension
+      if (!/^[a-zA-Z0-9_.@\-]+\.service$/.test(name)) {
+        return res
+          .status(400)
+          .json({ success: false, error: "Invalid service name" });
+      }
     }
+
+    await restartService(name);
 
     res.json({
       success: true,
       name,
       message: "Service restarted",
     });
-  });
+  } catch (err) {
+    console.error("Service could not be restarted:", err);
+    res.status(500).json({
+      success: false,
+      error: "Service could not be restarted",
+      details: String(err),
+    });
+  }
 });
 
 // System metrics: CPU / memory / swap / disk IO
 app.get("/api/metrics", requireAuth, async (req, res) => {
   try {
-    const [cpu, memSwap, disk] = await Promise.all([
-      getCpuUsage(),
-      Promise.resolve(getMemoryInfo()),
-      getDiskIO(),
-    ]);
+    const { cpu, memSwap, disk } = await getSystemMetrics();
 
     res.json({
       success: true,
