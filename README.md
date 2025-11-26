@@ -12,6 +12,7 @@ Linux üzerindeki systemd servislerini, durumlarını ve loglarını takip etmek
 - Kullanıcı şifresini değiştirebilmek için “User settings” sayfası
 
 > Not: Proje demo amaçlıdır. Gerçek bir üretim ortamına almadan önce güvenlik ayarlarını gözden geçirmeniz gerekir.
+
 ![Logo](public/assets/SentraStatBanner.png)
 ## Gereksinimler
 
