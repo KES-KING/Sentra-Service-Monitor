@@ -331,6 +331,79 @@ app.use(
   "/assets",
   express.static(require("path").join(__dirname, "public", "assets"))
 );
+
+// Get server information (hostname, IP, OS)
+app.get("/api/server-info", requireAuth, (req, res) => {
+  try {
+    const os = require("os");
+    const hostname = os.hostname();
+    const networkInterfaces = os.networkInterfaces();
+    
+    // Get primary IP address (preferring non-localhost, non-loopback)
+    let ipAddress = "127.0.0.1";
+    for (const [ifname, addrs] of Object.entries(networkInterfaces)) {
+      for (const addr of addrs) {
+        // Prefer IPv4 and skip loopback
+        if (addr.family === "IPv4" && !addr.address.startsWith("127.")) {
+          ipAddress = addr.address;
+          break;
+        }
+      }
+      if (ipAddress !== "127.0.0.1") break;
+    }
+    
+    // Get OS information
+    const platform = os.platform();
+    let osName = "Unknown";
+    let osVersion = os.release();
+    
+    if (platform === "linux") {
+      osName = "Linux";
+    } else if (platform === "darwin") {
+      osName = "macOS";
+    } else if (platform === "win32") {
+      osName = "Windows";
+    }
+    
+    // Try to read more detailed OS info from /etc/os-release on Linux
+    let osDetail = osName;
+    if (platform === "linux") {
+      try {
+        const osReleaseContent = fs.readFileSync("/etc/os-release", "utf8");
+        const lines = osReleaseContent.split("\n");
+        const idLine = lines.find(l => l.startsWith("ID="));
+        const versionLine = lines.find(l => l.startsWith("VERSION_ID="));
+        const prettyNameLine = lines.find(l => l.startsWith("PRETTY_NAME="));
+        
+        if (prettyNameLine) {
+          osDetail = prettyNameLine.split("=")[1].replace(/"/g, "");
+        } else if (idLine && versionLine) {
+          const id = idLine.split("=")[1].toUpperCase();
+          const version = versionLine.split("=")[1].replace(/"/g, "");
+          osDetail = `${id} ${version}`;
+        }
+      } catch (e) {
+        // Fallback to default
+      }
+    }
+    
+    res.json({
+      success: true,
+      hostname,
+      ipAddress,
+      osName,
+      osVersion: osDetail,
+    });
+  } catch (err) {
+    console.error("Error getting server info:", err);
+    res.status(500).json({
+      success: false,
+      error: "Could not get server information",
+      details: String(err),
+    });
+  }
+});
+
 // List all systemd services
 app.get("/api/services", requireAuth, async (req, res) => {
   try {

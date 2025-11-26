@@ -22,6 +22,24 @@
       background: #0c0f14;
       border-bottom: 1px solid #374151;
     }
+    .server-info {
+      font-size: 12px;
+      color: #9ca3af;
+      display: flex;
+      gap: 15px;
+      margin-right: auto;
+      margin-left: 20px;
+      padding-left: 20px;
+      border-left: 1px solid #374151;
+    }
+    .server-info-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .server-info-item strong {
+      color: #e5e7eb;
+    }
     .card-grafana {
       background: #111827;
       border: 1px solid #374151;
@@ -111,6 +129,20 @@
             alt="Sentra logo"
             style="height: 156px"
           />
+        </div>
+        <div class="server-info" id="server-info">
+          <div class="server-info-item">
+            <strong>IP:</strong>
+            <span id="server-ip">-</span>
+          </div>
+          <div class="server-info-item">
+            <strong>Hostname:</strong>
+            <span id="server-hostname">-</span>
+          </div>
+          <div class="server-info-item">
+            <strong>OS:</strong>
+            <span id="server-os">-</span>
+          </div>
         </div>
         <div class="d-flex align-items-center gap-2">
           <button
@@ -413,6 +445,25 @@ No data available.</div>
     let CURRENT_SERVICE = null;
     const PAGE_SIZE = 10;
     let CURRENT_PAGE = 1;
+
+    // Fetch and display server information
+    async function loadServerInfo() {
+      try {
+        const res = await fetch("/api/server-info");
+        const data = await res.json();
+        
+        if (data.success) {
+          document.getElementById("server-ip").textContent = data.ipAddress || "-";
+          document.getElementById("server-hostname").textContent = data.hostname || "-";
+          document.getElementById("server-os").textContent = data.osVersion || "-";
+        }
+      } catch (err) {
+        console.error("Error loading server info:", err);
+      }
+    }
+
+    // Load server info on page load
+    loadServerInfo();
 
     function setDetailHeaderFromService(service) {
       const nameEl = document.getElementById("detail-name");
