@@ -8,6 +8,12 @@ const bcrypt = require("bcryptjs");
 const mysql = require("mysql2/promise");
 const { exec } = require("child_process");
 const IS_WINDOWS = process.platform === "win32";
+const {
+  listServices,
+  getServiceStatus,
+  restartService,
+  getFailedServices,
+} = require("./services");
 
 const app = express();
 const PORT = process.env.PORT || 4001;
@@ -578,6 +584,81 @@ app.get("/api/metrics", requireAuth, async (req, res) => {
     res.status(500).json({
       success: false,
       error: "Could not fetch metrics",
+      details: String(err),
+    });
+  }
+});
+
+// Local OS services (Linux systemd / Windows Services)
+app.get("/api/services", requireAuth, async (req, res) => {
+  try {
+    const services = await listServices();
+    res.json({ success: true, services });
+  } catch (err) {
+    console.error("Error listing services:", err);
+    res.status(500).json({
+      success: false,
+      error: "Could not list services",
+      details: String(err),
+    });
+  }
+});
+
+app.get("/api/failed-services", requireAuth, async (req, res) => {
+  try {
+    const failedServices = await getFailedServices();
+    res.json({ success: true, failedServices });
+  } catch (err) {
+    console.error("Error listing failed services:", err);
+    res.status(500).json({
+      success: false,
+      error: "Could not list failed services",
+      details: String(err),
+    });
+  }
+});
+
+function isSafeServiceName(name) {
+  return typeof name === "string" && /^[a-zA-Z0-9@._\-]+$/.test(name);
+}
+
+app.get("/api/services/:name", requireAuth, async (req, res) => {
+  try {
+    const { name } = req.params;
+    if (!isSafeServiceName(name)) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Invalid service name" });
+    }
+
+    const detail = await getServiceStatus(name);
+    res.json({ success: true, ...detail });
+  } catch (err) {
+    console.error("Error getting service status:", err);
+    res.status(500).json({
+      success: false,
+      error: "Could not get service status",
+      details: String(err),
+    });
+  }
+});
+
+app.post("/api/services/:name/restart", requireAuth, async (req, res) => {
+  try {
+    const { name } = req.params;
+    if (!isSafeServiceName(name)) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Invalid service name" });
+    }
+
+    await restartService(name);
+    res.json({ success: true, message: "Service restarted successfully" });
+  } catch (err) {
+    console.error("Error restarting service:", err);
+    res.status(500).json({
+      success: false,
+      error: "Could not restart service",
       details: String(err),
     });
   }
