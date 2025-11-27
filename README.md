@@ -29,6 +29,7 @@ Linux ve Windows üzerindeki servisleri, durumlarını ve loglarını takip etme
   - `/proc` dosya sistemine erişim (metrikler için)
 - Windows:
   - PowerShell (Get-Service, Get-WmiObject, Get-WinEvent, Get-Counter komutları)
+  - PowerShell Komutları etkinleştirmek için `Set-ExecutionPolicy RemoteSigned -Scope CurrentUser` kodunu administrator yetkisi ile çalıştırın
 
 ## Kurulum
 
