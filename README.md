@@ -237,6 +237,8 @@ Tüm sayfalar login gerektirir; oturum yoksa `/login`’e redirect edilir.
 
 ## Windows SSM Agent entegrasyonu
 
+![Banner](public/assets/SSMAgentBanner.png)
+
 ### Agent ve App ID kavramı
 
 - Her SSM Agent kurulumu kendi App ID’sini (GUID) üretir ve Windows Registry’de saklar.
