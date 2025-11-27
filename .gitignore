@@ -11,6 +11,7 @@ yarn-error.log*
 
 # Windows Form Build outputs
 WinApp/
+WinAppApi/
 
 # Database files
 schema-test.sql

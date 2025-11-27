@@ -185,17 +185,13 @@
           </div>
         </div>
         <div class="d-flex align-items-center gap-2">
-          <button
-            id="console-btn"
-            class="btn btn-sm btn-outline-light"
-            type="button"
-          >
-            Console
-          </button>
-          <button
-            id="user-settings-btn"
-            class="btn btn-sm btn-outline-light"
-            type="button"
+            <button id="dashboard-btn" class="btn btn-sm btn-outline-light" type="button">Windows Agent Dashboard</button>
+            <button id="apps-btn" class="btn btn-sm btn-outline-light" type="button">Agent Credentials</button>
+            <button id="console-btn" class="btn btn-sm btn-outline-light" type="button">Web Console</button>
+            <button
+              id="user-settings-btn"
+              class="btn btn-sm btn-outline-light"
+              type="button"
           >
             User settings
           </button>
@@ -1001,14 +997,12 @@ No data available.</div>
       const logoutBtn = document.getElementById("logout-btn");
       const userSettingsBtn = document.getElementById("user-settings-btn");
       const consoleBtn = document.getElementById("console-btn");
+      const dashboardBtn = document.getElementById("dashboard-btn");
+      const appsBtn = document.getElementById("apps-btn");
 
       if (logoutBtn) {
         logoutBtn.addEventListener("click", async () => {
-          try {
-            await fetch("/logout", { method: "POST" });
-          } catch (e) {
-            console.error(e);
-          }
+          try { await fetch("/logout", { method: "POST" }); } catch (e) { console.error(e); }
           window.location.href = "/login";
         });
       }
@@ -1022,6 +1016,18 @@ No data available.</div>
       if (consoleBtn) {
         consoleBtn.addEventListener("click", () => {
           window.location.href = "/console";
+        });
+      }
+
+      if (dashboardBtn) {
+        dashboardBtn.addEventListener("click", () => {
+          window.location.href = "/dashboard";
+        });
+      }
+
+      if (appsBtn) {
+        appsBtn.addEventListener("click", () => {
+          window.location.href = "/apps";
         });
       }
     })();

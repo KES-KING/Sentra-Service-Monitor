@@ -7,7 +7,7 @@ const session = require("express-session");
 const bcrypt = require("bcryptjs");
 const mysql = require("mysql2/promise");
 const { exec } = require("child_process");
-const { listServices, getServiceStatus, restartService, getFailedServices, IS_WINDOWS } = require("./services");
+const IS_WINDOWS = process.platform === "win32";
 
 const app = express();
 const PORT = process.env.PORT || 4001;
@@ -61,6 +61,27 @@ function requireAuth(req, res, next) {
     return next();
   }
   return res.status(401).json({ success: false, error: "Unauthorized" });
+}
+
+// Agent auth via X-APP-ID header
+async function verifyAgent(req, res, next) {
+  try {
+    const appId = req.headers["x-app-id"];
+    if (!appId) {
+      return res.status(400).json({ status: "error", error: "X-APP-ID header required" });
+    }
+
+    const [rows] = await pool.execute("SELECT * FROM agents WHERE app_id = ? LIMIT 1", [appId]);
+    if (rows.length === 0) {
+      return res.status(403).json({ status: "error", error: "Unknown AppID. Please register this agent first." });
+    }
+
+    req.agent = rows[0];
+    next();
+  } catch (err) {
+    console.error("verifyAgent error:", err);
+    res.status(500).json({ status: "error", error: "Agent verification failed", details: String(err) });
+  }
 }
 
 // Helpers ---------------------------------------------------------
@@ -443,6 +464,22 @@ app.get("/console", (req, res) => {
   res.sendFile(require("path").join(__dirname, "public", "console.html"));
 });
 
+// Dashboard page (agents/services view)
+app.get("/dashboard", (req, res) => {
+  if (!req.session || !req.session.userId) {
+    return res.redirect("/login");
+  }
+  res.sendFile(require("path").join(__dirname, "public", "dashboard.html"));
+});
+
+// Apps page (App ID registration)
+app.get("/apps", (req, res) => {
+  if (!req.session || !req.session.userId) {
+    return res.redirect("/login");
+  }
+  res.sendFile(require("path").join(__dirname, "public", "apps.html"));
+});
+
 // static assets (logo, etc.)
 app.use(
   "/assets",
@@ -517,116 +554,6 @@ app.get("/api/server-info", requireAuth, (req, res) => {
     res.status(500).json({
       success: false,
       error: "Could not get server information",
-      details: String(err),
-    });
-  }
-});
-
-// List all systemd services
-app.get("/api/services", requireAuth, async (req, res) => {
-  try {
-    const services = await listServices();
-    res.json({ success: true, services });
-  } catch (err) {
-    console.error("Error while listing services:", err);
-    res.status(500).json({
-      success: false,
-      error: "Could not list services",
-      details: String(err),
-    });
-  }
-});
-
-// Single service: status + logs
-app.get("/api/services/:name", requireAuth, async (req, res) => {
-  const name = req.params.name;
-
-  try {
-    // Validation differs based on OS
-    if (IS_WINDOWS) {
-      // Windows: allow alphanumeric, spaces, underscores, hyphens
-      if (!/^[a-zA-Z0-9_\-\s]+$/.test(name)) {
-        return res
-          .status(400)
-          .json({ success: false, error: "Invalid service name" });
-      }
-    } else {
-      // Linux: require .service extension
-      if (!/^[a-zA-Z0-9_.@\-]+\.service$/.test(name)) {
-        return res
-          .status(400)
-          .json({ success: false, error: "Invalid service name" });
-      }
-    }
-
-    const { statusText, logsText } = await getServiceStatus(name);
-
-    res.json({
-      success: true,
-      name,
-      statusText,
-      logsText,
-    });
-  } catch (err) {
-    console.error("Error getting service status:", err);
-    res.status(500).json({
-      success: false,
-      error: "Could not read service status",
-      details: String(err),
-    });
-  }
-});
-
-// Failed services with last state change timestamps
-app.get("/api/failed-services", requireAuth, async (req, res) => {
-  try {
-    const failedServices = await getFailedServices();
-
-    res.json({ success: true, failedServices });
-  } catch (err) {
-    console.error("Error while listing failed services:", err);
-    res.status(500).json({
-      success: false,
-      error: "Could not list failed services",
-      details: String(err),
-    });
-  }
-});
-
-// Restart a service
-app.post("/api/services/:name/restart", requireAuth, async (req, res) => {
-  const name = req.params.name;
-
-  try {
-    // Validation differs based on OS
-    if (IS_WINDOWS) {
-      // Windows: allow alphanumeric, spaces, underscores, hyphens
-      if (!/^[a-zA-Z0-9_\-\s]+$/.test(name)) {
-        return res
-          .status(400)
-          .json({ success: false, error: "Invalid service name" });
-      }
-    } else {
-      // Linux: require .service extension
-      if (!/^[a-zA-Z0-9_.@\-]+\.service$/.test(name)) {
-        return res
-          .status(400)
-          .json({ success: false, error: "Invalid service name" });
-      }
-    }
-
-    await restartService(name);
-
-    res.json({
-      success: true,
-      name,
-      message: "Service restarted",
-    });
-  } catch (err) {
-    console.error("Service could not be restarted:", err);
-    res.status(500).json({
-      success: false,
-      error: "Service could not be restarted",
       details: String(err),
     });
   }
@@ -826,6 +753,248 @@ app.post("/api/console/exec", requireAuth, (req, res) => {
       error: "Could not execute command",
       details: String(err),
     });
+  }
+});
+
+// -------- Agent API (from WinAppApi) ----------------------------
+
+// Agent registration via X-APP-ID header
+app.post("/api/auth/register", async (req, res) => {
+  try {
+    const appId = req.headers["x-app-id"];
+    const { hostname, os } = req.body || {};
+
+    if (!appId) {
+      return res.status(400).json({ status: "error", error: "X-APP-ID header required" });
+    }
+
+    const [rows] = await pool.execute("SELECT * FROM agents WHERE app_id = ? LIMIT 1", [appId]);
+
+    if (rows.length === 0) {
+      return res.status(403).json({
+        status: "error",
+        registered: false,
+        error: "Unknown AppID. Please pre-register this agent (App ID) on the server.",
+      });
+    }
+
+    await pool.execute(
+      "UPDATE agents SET last_seen = NOW(), hostname = ?, os = ? WHERE app_id = ?",
+      [hostname || null, os || null, appId]
+    );
+
+    return res.json({ status: "ok", registered: true });
+  } catch (err) {
+    console.error("auth/register error:", err);
+    return res.status(500).json({ status: "error", error: "register failed", details: String(err) });
+  }
+});
+
+// Agent status update
+app.post("/api/status/update", verifyAgent, async (req, res) => {
+  try {
+    const agent = req.agent;
+    const { cpu, ram, uptime, timestamp, hostname, os } = req.body || {};
+
+    await pool.execute(
+      "INSERT INTO agent_status (agent_id, cpu, ram, uptime, timestamp) VALUES (?, ?, ?, ?, ?)",
+      [agent.id, cpu, ram, uptime, timestamp]
+    );
+
+    await pool.execute(
+      "UPDATE agents SET last_seen = NOW(), hostname = COALESCE(?, hostname), os = COALESCE(?, os) WHERE id = ?",
+      [hostname || null, os || null, agent.id]
+    );
+
+    const [rows] = await pool.execute("SELECT last_seen FROM agents WHERE id = ?", [agent.id]);
+    const lastSeen = rows.length > 0 ? rows[0].last_seen : null;
+
+    const [cmdRows] = await pool.execute(
+      "SELECT id, service_name, command_type FROM agent_service_commands WHERE agent_id = ? AND status = 'pending'",
+      [agent.id]
+    );
+
+    const commands = cmdRows.map((c) => ({
+      id: c.id,
+      type: c.command_type,
+      service_name: c.service_name,
+    }));
+
+    res.json({ status: "ok", updated: true, last_seen: lastSeen, commands });
+  } catch (err) {
+    console.error("status/update error:", err);
+    res.status(500).json({ status: "error", error: "status update failed", details: String(err) });
+  }
+});
+
+// Agent services snapshot
+app.post("/api/status/services", verifyAgent, async (req, res) => {
+  try {
+    const agent = req.agent;
+    const { services, timestamp } = req.body || {};
+
+    if (!Array.isArray(services)) {
+      return res.status(400).json({ status: "error", error: "services array required" });
+    }
+
+    for (const svc of services) {
+      const name = svc.name || svc.service_name;
+      if (!name) continue;
+
+      const displayName = svc.display_name || svc.displayName || null;
+      const status = svc.status || null;
+
+      await pool.execute(
+        `INSERT INTO agent_services (agent_id, service_name, display_name, status, last_updated)
+         VALUES (?, ?, ?, ?, NOW())
+         ON DUPLICATE KEY UPDATE display_name = VALUES(display_name),
+                                 status = VALUES(status),
+                                 last_updated = VALUES(last_updated)`,
+        [agent.id, name, displayName, status]
+      );
+    }
+
+    res.json({
+      status: "ok",
+      updated: true,
+      count: services.length,
+      timestamp: timestamp || null,
+    });
+  } catch (err) {
+    console.error("status/services error:", err);
+    res.status(500).json({ status: "error", error: "services update failed", details: String(err) });
+  }
+});
+
+// Agent reports command execution result
+app.post("/api/status/service-command-result", verifyAgent, async (req, res) => {
+  try {
+    const agent = req.agent;
+    const { id, success, error } = req.body || {};
+
+    if (!id) {
+      return res.status(400).json({ status: "error", error: "id required" });
+    }
+
+    await pool.execute(
+      `UPDATE agent_service_commands
+       SET status = ?, error_message = ?, executed_at = NOW()
+       WHERE id = ? AND agent_id = ?`,
+      [success ? "done" : "failed", error || null, id, agent.id]
+    );
+
+    res.json({ status: "ok" });
+  } catch (err) {
+    console.error("service-command-result error:", err);
+    res.status(500).json({ status: "error", error: "command result update failed", details: String(err) });
+  }
+});
+
+// Queue a service restart command for an agent (web, authenticated)
+app.post("/api/agent-services/:agentId/:serviceName/restart", requireAuth, async (req, res) => {
+  try {
+    const { agentId, serviceName } = req.params;
+    const userId = req.session.userId;
+
+    if (!agentId || !serviceName) {
+      return res.status(400).json({ success: false, error: "agentId and serviceName required" });
+    }
+
+    const [rows] = await pool.execute(
+      "SELECT id FROM agents WHERE id = ? AND (user_id = ? OR user_id IS NULL) LIMIT 1",
+      [agentId, userId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(403).json({ success: false, error: "No permission for this agent" });
+    }
+
+    await pool.execute(
+      `INSERT INTO agent_service_commands (agent_id, service_name, command_type, status)
+       VALUES (?, ?, 'restart', 'pending')`,
+      [agentId, serviceName]
+    );
+
+    res.json({ success: true, message: "Restart command queued" });
+  } catch (err) {
+    console.error("queue restart error:", err);
+    res.status(500).json({ success: false, error: "Could not queue restart", details: String(err) });
+  }
+});
+
+// Agent/app management (web)
+app.get("/api/agents", requireAuth, async (req, res) => {
+  try {
+    const userId = req.session.userId;
+    const [rows] = await pool.execute(
+      "SELECT id, app_id, hostname, os, last_seen, created_at FROM agents WHERE user_id = ? ORDER BY last_seen DESC, id ASC",
+      [userId]
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error("api/agents error:", err);
+    res.status(500).json({ success: false, error: "Could not list agents" });
+  }
+});
+
+app.post("/api/apps", requireAuth, async (req, res) => {
+  try {
+    const userId = req.session.userId;
+    const { app_id } = req.body || {};
+    if (!app_id || typeof app_id !== "string") {
+      return res.status(400).json({ success: false, error: "app_id required" });
+    }
+
+    const [existing] = await pool.execute("SELECT id FROM agents WHERE app_id = ? LIMIT 1", [app_id]);
+    if (existing.length > 0) {
+      await pool.execute("UPDATE agents SET user_id = ? WHERE app_id = ?", [userId, app_id]);
+    } else {
+      await pool.execute("INSERT INTO agents (user_id, app_id) VALUES (?, ?)", [userId, app_id]);
+    }
+
+    res.json({ success: true, message: "App ID registered to your account" });
+  } catch (err) {
+    console.error("api/apps error:", err);
+    res.status(500).json({ success: false, error: "Could not register app id" });
+  }
+});
+
+app.get("/api/agent-status", requireAuth, async (req, res) => {
+  try {
+    const userId = req.session.userId;
+    const [rows] = await pool.execute(
+      `SELECT s.id, s.agent_id, s.cpu, s.ram, s.uptime, s.timestamp,
+              a.app_id, a.hostname
+       FROM agent_status s
+       JOIN agents a ON a.id = s.agent_id
+       WHERE a.user_id = ?
+       ORDER BY s.timestamp DESC, s.id DESC
+       LIMIT 50`,
+      [userId]
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error("api/agent-status error:", err);
+    res.status(500).json({ success: false, error: "Could not list status" });
+  }
+});
+
+app.get("/api/agent-services", requireAuth, async (req, res) => {
+  try {
+    const userId = req.session.userId;
+    const [rows] = await pool.execute(
+      `SELECT sv.agent_id, sv.service_name, sv.display_name, sv.status, sv.last_updated,
+              a.app_id, a.hostname
+       FROM agent_services sv
+       JOIN agents a ON a.id = sv.agent_id
+       WHERE a.user_id = ?
+       ORDER BY a.hostname, sv.service_name`,
+      [userId]
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error("api/agent-services error:", err);
+    res.status(500).json({ success: false, error: "Could not list services" });
   }
 });
 
