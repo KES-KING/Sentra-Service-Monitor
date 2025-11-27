@@ -237,7 +237,7 @@ Tüm sayfalar login gerektirir; oturum yoksa `/login`’e redirect edilir.
 
 ## Windows SSM Agent entegrasyonu
 
-![Banner](public/assets/SSMAgentBanner.png)
+![Banner](public/assets/SSMAgnetBanner.png)
 
 ### Agent ve App ID kavramı
 
