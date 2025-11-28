@@ -1,7 +1,7 @@
 ![Logo](public/assets/whitesentra_logo2.png)
 # Sentra Stat Monitor
 
-Sentra Stat Monitor; Linux ve Windows sunuculardaki servisleri, durumlarını ve loglarını
+Sentra Stat Monitor; Linux, macOS ve Windows sunuculardaki servisleri, durumlarını ve loglarını
 izlemek için hazırlanmış, Node.js + MySQL tabanlı küçük bir dashboard projesidir.
 
 Projede artık iki ana bileşen vardır:
@@ -18,7 +18,7 @@ Windows makinelerden gelen verileri tek bir panelde toplayabilir.
 ## Özellikler
 
 - Oturum temelli login sistemi (MySQL `users` tablosu)
-- Linux / Windows üzerinde çalışan web sunucusu için:
+- Linux / macOS / Windows üzerinde çalışan web sunucusu için:
   - Sunucu bilgileri (IP, hostname, OS)
   - CPU, bellek, swap ve disk I/O metrik kartları
   - Kısıtlı komut çalıştırma konsolu (`/console`)
@@ -60,12 +60,14 @@ Windows makinelerden gelen verileri tek bir panelde toplayabilir.
 - **Web tarafı**
   - Node.js 18+ (geliştirme ortamında 22 ile test edildi)
   - npm
-  - MySQL 8 (veya uyumlu bir MySQL sunucusu)
+- MySQL 8 (veya uyumlu bir MySQL sunucusu)
 
 - **Linux üzerinde web sunucusu**
   - `systemd` ve `journalctl` komutlarına erişim (ileri düzey servis izlemesi için)
   - `/proc` dosya sistemine erişim (CPU / bellek / disk metrikleri için)
-
+- **macOS üzerinde web sunucusu**
+  - `launchctl` ve `log` komutlarına erişim (launchd servislerini ve loglarını görmek için)
+  - Sistem loglarına erişim için yeterli yetkiye sahip kullanıcı ile çalıştırma
 - **Windows üzerinde web sunucusu**
   - PowerShell (temel komutlar için)
 
@@ -415,4 +417,3 @@ pm2 save                            # reboot sonrasında otomatik başlatma içi
 - Değişiklik yaptıktan sonra sadece `server.js` sürecini yeniden başlatmanız yeterlidir.
 - Proje hem Linux hem de Windows üzerinde çalışabilir; ancak üretim için öncelikli
   hedef Linux/systemd ortamıdır.
-

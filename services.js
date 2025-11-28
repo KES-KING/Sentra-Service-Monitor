@@ -3,16 +3,20 @@ const { exec } = require("child_process");
 const os = require("os");
 
 const IS_WINDOWS = os.platform() === "win32";
+const IS_DARWIN = os.platform() === "darwin";
 
 /**
  * List services based on OS
  * Linux: systemd services
  * Windows: Windows services
+ * macOS: launchd services
  * @returns Promise<Array<{name, load, active, sub, description, platform}>>
  */
 function listServices() {
   if (IS_WINDOWS) {
     return listWindowsServices();
+  } else if (IS_DARWIN) {
+    return listMacServices();
   } else {
     return listLinuxServices();
   }
@@ -98,6 +102,64 @@ function listWindowsServices() {
 }
 
 /**
+ * List macOS (launchd) services
+ * @returns Promise<Array<{name, load, active, sub, description, platform}>>
+ */
+function listMacServices() {
+  return new Promise((resolve, reject) => {
+    const cmd = "launchctl list";
+
+    exec(cmd, { maxBuffer: 1024 * 1024 }, (error, stdout) => {
+      if (error && !stdout) {
+        return reject(error);
+      }
+
+      const lines = (stdout || "")
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0);
+
+      const services = [];
+
+      for (const line of lines) {
+        if (line.startsWith("PID")) continue;
+        const parts = line.split(/\s+/);
+        if (parts.length < 3) continue;
+
+        const pidStr = parts[0];
+        const statusStr = parts[1];
+        const label = parts.slice(2).join(" ");
+
+        const pid = parseInt(pidStr, 10);
+        const statusCode = parseInt(statusStr, 10);
+
+        let active = "inactive";
+        let sub = "stopped";
+
+        if (!Number.isNaN(pid) && pid > 0) {
+          active = "active";
+          sub = "running";
+        } else if (!Number.isNaN(statusCode) && statusCode !== 0) {
+          active = "failed";
+          sub = "failed";
+        }
+
+        services.push({
+          name: label,
+          load: "loaded",
+          active,
+          sub,
+          description: label,
+          platform: "macos",
+        });
+      }
+
+      resolve(services);
+    });
+  });
+}
+
+/**
  * Get service status and logs
  * @param {string} serviceName - Service name
  * @returns Promise<{statusText, logsText}>
@@ -105,6 +167,8 @@ function listWindowsServices() {
 function getServiceStatus(serviceName) {
   if (IS_WINDOWS) {
     return getWindowsServiceStatus(serviceName);
+  } else if (IS_DARWIN) {
+    return getMacServiceStatus(serviceName);
   } else {
     return getLinuxServiceStatus(serviceName);
   }
@@ -166,12 +230,47 @@ function getWindowsServiceStatus(serviceName) {
 }
 
 /**
+ * Get macOS service status and logs
+ */
+function getMacServiceStatus(serviceName) {
+  return new Promise((resolve, reject) => {
+    const statusCmd = `launchctl list '${serviceName}'`;
+    const logsCmd = `log show --style syslog --last 1h --predicate 'process == \\"${serviceName}\\"'`;
+
+    exec(statusCmd, { maxBuffer: 1024 * 1024 }, (statusError, statusStdout) => {
+      const statusText =
+        statusError && !statusStdout
+          ? `Error: ${statusError.message}`
+          : (statusStdout || "").toString();
+
+      exec(logsCmd, { maxBuffer: 1024 * 1024 }, (logsError, logsStdout) => {
+        const logsText = logsError
+          ? "Could not fetch logs"
+          : (logsStdout || "").toString() || "(No recent logs found)";
+
+        if (statusError && !statusStdout) {
+          // If we truly have no status output, treat as error
+          return reject(statusError);
+        }
+
+        resolve({
+          statusText,
+          logsText,
+        });
+      });
+    });
+  });
+}
+
+/**
  * Restart a service
  * @param {string} serviceName - Service name
  */
 function restartService(serviceName) {
   if (IS_WINDOWS) {
     return restartWindowsService(serviceName);
+  } else if (IS_DARWIN) {
+    return restartMacService(serviceName);
   } else {
     return restartLinuxService(serviceName);
   }
@@ -210,11 +309,29 @@ function restartWindowsService(serviceName) {
 }
 
 /**
+ * Restart macOS service
+ */
+function restartMacService(serviceName) {
+  return new Promise((resolve, reject) => {
+    const userCmd = `launchctl kickstart -k gui/$(id -u)/'${serviceName}'`;
+
+    exec(userCmd, { maxBuffer: 1024 * 1024 }, (error) => {
+      if (error) {
+        return reject(error);
+      }
+      resolve({ message: "Service restarted successfully" });
+    });
+  });
+}
+
+/**
  * Get failed services
  */
 function getFailedServices() {
   if (IS_WINDOWS) {
     return getWindowsFailedServices();
+  } else if (IS_DARWIN) {
+    return getMacFailedServices();
   } else {
     return getLinuxFailedServices();
   }
@@ -315,6 +432,52 @@ function getWindowsFailedServices() {
   });
 }
 
+/**
+ * Get macOS failed services
+ */
+function getMacFailedServices() {
+  return new Promise((resolve, reject) => {
+    const cmd = "launchctl list";
+
+    exec(cmd, { maxBuffer: 1024 * 1024 }, (error, stdout) => {
+      if (error && !stdout) {
+        return reject(error);
+      }
+
+      const lines = (stdout || "")
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0);
+
+      const failed = [];
+
+      for (const line of lines) {
+        if (line.startsWith("PID")) continue;
+        const parts = line.split(/\s+/);
+        if (parts.length < 3) continue;
+
+        const statusStr = parts[1];
+        const label = parts.slice(2).join(" ");
+        const statusCode = parseInt(statusStr, 10);
+
+        if (!Number.isNaN(statusCode) && statusCode !== 0) {
+          failed.push({
+            name: label,
+            description: label,
+            active: "failed",
+            sub: "failed",
+            load: "loaded",
+            failedAt: null,
+            platform: "macos",
+          });
+        }
+      }
+
+      resolve(failed);
+    });
+  });
+}
+
 module.exports = {
   listServices,
   getServiceStatus,
@@ -322,4 +485,3 @@ module.exports = {
   getFailedServices,
   IS_WINDOWS,
 };
-

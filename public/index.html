@@ -105,6 +105,15 @@
       font-weight: 600;
       border-color: #2d3748;
     }
+    .table-dark {
+      background: #16202f !important;
+      color: #9ca3af !important;
+    }
+    .table-dark th {
+      background: #16202f !important;
+      color: #9ca3af !important;
+      border-color: #2d3748 !important;
+    }
     .table tbody tr {
       background: #1a202d;
       border-color: #2d3748;
@@ -494,7 +503,12 @@ No data available.</div>
           document.getElementById("server-os").textContent = data.osVersion || "-";
           
           // Set platform label for services
-          const platformLabel = data.isWindows ? "(Windows)" : "(Linux)";
+          let platformLabel = "(Linux)";
+          if (data.isWindows) {
+            platformLabel = "(Windows)";
+          } else if (data.isMac) {
+            platformLabel = "(macOS)";
+          }
           document.getElementById("services-platform-label").textContent = platformLabel;
         }
       } catch (err) {

@@ -8,6 +8,7 @@ const bcrypt = require("bcryptjs");
 const mysql = require("mysql2/promise");
 const { exec } = require("child_process");
 const IS_WINDOWS = process.platform === "win32";
+const IS_MAC = process.platform === "darwin";
 const {
   listServices,
   getServiceStatus,
@@ -554,6 +555,7 @@ app.get("/api/server-info", requireAuth, (req, res) => {
       osName,
       osVersion: osDetail,
       isWindows: IS_WINDOWS,
+      isMac: IS_MAC,
     });
   } catch (err) {
     console.error("Error getting server info:", err);
