@@ -81,3 +81,23 @@ CREATE TABLE IF NOT EXISTS `agent_service_commands` (
   KEY `idx_agent_service_commands_agent` (`agent_id`),
   CONSTRAINT `fk_agent_service_commands_agent` FOREIGN KEY (`agent_id`) REFERENCES `agents` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- sql trigger
+
+DELIMITER $$
+
+CREATE TRIGGER limit_50_cleanup
+AFTER INSERT ON agent_status
+FOR EACH ROW
+BEGIN
+    DECLARE toplam INT;
+
+    SELECT COUNT(*) INTO toplam FROM agent_status;
+
+    IF toplam > 50 THEN
+        DELETE FROM agent_status;
+    END IF;
+END$$
+
+DELIMITER ;
+
